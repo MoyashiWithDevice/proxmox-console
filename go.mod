@@ -6,7 +6,6 @@ require (
 	github.com/amoghe/go-crypt v0.0.0-20220222110647-20eada5f5964
 	github.com/hashicorp/terraform-exec v0.25.1
 	github.com/joho/godotenv v1.5.1
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

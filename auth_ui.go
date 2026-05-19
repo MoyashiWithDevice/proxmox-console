@@ -41,12 +41,12 @@ func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, e
 func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		http.Redirect(w, r, AppConfig.Kratos.BrowserURL+"/self-service/login/browser", http.StatusFound)
+		http.Redirect(w, r, AppConfig.Kratos.APIURL+"/self-service/login/browser", http.StatusFound)
 		return
 	}
 	flow, err := fetchKratosFlow("/self-service/login/flows?id="+flowID, r)
 	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BrowserURL+"/self-service/login/browser", http.StatusFound)
+		http.Redirect(w, r, AppConfig.Kratos.APIURL+"/self-service/login/browser", http.StatusFound)
 		return
 	}
 	flowJSON, _ := json.Marshal(flow)
@@ -57,12 +57,12 @@ func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		http.Redirect(w, r, AppConfig.Kratos.BrowserURL+"/self-service/registration/browser", http.StatusFound)
+		http.Redirect(w, r, AppConfig.Kratos.APIURL+"/self-service/registration/browser", http.StatusFound)
 		return
 	}
 	flow, err := fetchKratosFlow("/self-service/registration/flows?id="+flowID, r)
 	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BrowserURL+"/self-service/registration/browser", http.StatusFound)
+		http.Redirect(w, r, AppConfig.Kratos.APIURL+"/self-service/registration/browser", http.StatusFound)
 		return
 	}
 	flowJSON, _ := json.Marshal(flow)

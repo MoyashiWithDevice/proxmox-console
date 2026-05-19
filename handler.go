@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"encoding/json"
 	"context"
@@ -244,4 +245,143 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func atoiSafe(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
+}
+
+func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
+	path := filepath.Join(workdir, "runtime.tfvars")
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(b), "\n")
+	out := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+
+		switch {
+		case strings.HasPrefix(trim, "servername"):
+			if name != "" {
+				out = append(out, fmt.Sprintf(`servername    = "%s"`, name))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "cpu"):
+			if cpu > 0 {
+				out = append(out, fmt.Sprintf(`cpu           = %d`, cpu))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "memory"):
+			if memory > 0 {
+				out = append(out, fmt.Sprintf(`memory        = %d`, memory))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "hdd"):
+			if hdd > 0 {
+				out = append(out, fmt.Sprintf(`hdd           = %d`, hdd))
+			} else {
+				out = append(out, line)
+			}
+
+		default:
+			out = append(out, line)
+		}
+	}
+
+	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0600)
+}
+
+func applyTerraform(workdir string) error {
+	tf, err := tfexec.NewTerraform(workdir, "terraform")
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	if err := tf.Init(ctx); err != nil {
+		return err
+	}
+
+	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
+}
+
+func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
+
+	// TODO: 要実装
+	// workdir, err := findWorkdirByVMID(userID, vmid)
+	// if err != nil {
+	// 	return err
+	// }
+
+	workdir := filepath.Join("terraform", "vms", userID)
+	dirs, _ := os.ReadDir(workdir)
+
+	for _, d := range dirs {
+		tfpath := filepath.Join(workdir, d.Name(), "runtime.tfvars")
+		if _, err := os.Stat(tfpath); err == nil {
+			workdir = filepath.Join(workdir, d.Name())
+			break
+		}
+	}
+
+	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
+		return err
+	}
+
+	return applyTerraform(workdir)
+}
+
+func updateVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := getKratosUserIDFromRequest(r)
+
+	var req struct {
+		VMID  int    `json:"vmid"`
+		Name  string `json:"name"`
+		Cores int    `json:"cores"`
+		Memory int   `json:"memory"`
+		HDD   int    `json:"hdd"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	if req.VMID == 0 {
+		http.Error(w, "missing vmid", 400)
+		return
+	}
+
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name})
+
+	err := updateVMResources(
+		userID,
+		req.Name,
+		req.VMID,
+		req.Cores,
+		req.Memory,
+		req.HDD,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }

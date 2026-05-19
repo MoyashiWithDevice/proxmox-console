@@ -44,6 +44,7 @@ func main() {
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)
+	http.HandleFunc("/update", updateVMHandler)
 	http.HandleFunc("/error", errorUIHandler)
 
 	fmt.Println("Server started")

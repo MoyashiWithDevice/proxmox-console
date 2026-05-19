@@ -22,6 +22,7 @@ type VMInfo struct {
 	IP     string `json:"IP"`
 	Memory int    `json:"Memory"`
 	Cores  int    `json:"Cores"`
+	Hdd    int	  `json:"Hdd"` 
 }
 
 func listUserVMs(userID string) ([]VMInfo, error) {
@@ -75,6 +76,14 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 			// Memory
 			mem := attr["memory"].([]interface{})[0].(map[string]interface{})
 			vm.Memory = int(mem["dedicated"].(float64))
+			
+			// HDD (disk size)
+			if disks, ok := attr["disk"].([]interface{}); ok && len(disks) > 0 {
+				d0 := disks[0].(map[string]interface{})
+				if size, ok := d0["size"].(float64); ok {
+					vm.Hdd = int(size)
+				}
+			}
 
 			// IP
 			ipv4 := attr["ipv4_addresses"].([]interface{})[1].([]interface{})

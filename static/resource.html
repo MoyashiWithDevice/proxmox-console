@@ -40,11 +40,34 @@ function Icon(props) {
 
 var h = React.createElement;
 var useState = React.useState;
+var useEffect = React.useEffect;
 
 function App() {
   var _cpu = useState(1); var cpu = _cpu[0]; var setCpu = _cpu[1];
   var _mem = useState(1024); var mem = _mem[0]; var setMem = _mem[1];
   var _hdd = useState(10); var hdd = _hdd[0]; var setHdd = _hdd[1];
+  var _settings = useState(null); var settings = _settings[0]; var setSettings = _settings[1];
+  var _loaded = useState(false); var loaded = _loaded[0]; var setLoaded = _loaded[1];
+
+  // Fetch settings on component mount
+  useEffect(function() {
+    fetch('/api/settings')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        setSettings(data);
+        // Initialize with default values from settings
+        if (data.resources) {
+          setCpu(data.resources.cpu.min);
+          setMem(data.resources.memory.min);
+          setHdd(data.resources.hdd.min);
+        }
+        setLoaded(true);
+      })
+      .catch(function(err) {
+        console.error('Failed to load settings:', err);
+        setLoaded(true);
+      });
+  }, []);
 
   var numInputStyle = {
     width: 80, textAlign: "center", fontSize: 13,
@@ -116,9 +139,17 @@ function App() {
         h("input", { type: "hidden", name: "memory", value: mem }),
         h("input", { type: "hidden", name: "hdd", value: hdd }),
 
-        sliderRow("CPU コア数", "cpu", cpu, setCpu, 1, 3, 1, "コア"),
-        sliderRow("メモリ", "memoryStick", mem, setMem, 512, 4096, 512, "MB"),
-        sliderRow("ディスク容量", "hardDrive", hdd, setHdd, 1, 64, 1, "GB"),
+        loaded ? [
+          settings && settings.resources ? h("div", null,
+            sliderRow("CPU コア数", "cpu", cpu, setCpu, settings.resources.cpu.min, settings.resources.cpu.max, 1, "コア"),
+            sliderRow("メモリ", "memoryStick", mem, setMem, settings.resources.memory.min, settings.resources.memory.max, settings.resources.memory.step, "MB"),
+            sliderRow("ディスク容量", "hardDrive", hdd, setHdd, settings.resources.hdd.min, settings.resources.hdd.max, settings.resources.hdd.step, "GB")
+          ) : h("div", null,
+            sliderRow("CPU コア数", "cpu", cpu, setCpu, 1, 3, 1, "コア"),
+            sliderRow("メモリ", "memoryStick", mem, setMem, 512, 4096, 512, "MB"),
+            sliderRow("ディスク容量", "hardDrive", hdd, setHdd, 1, 64, 1, "GB")
+          )
+        ] : h("div", { style: { padding: "32px", textAlign: "center", color: "#666" } }, "設定を読み込み中..."),
 
         /* Summary */
         h("div", { style: { padding: "18px 32px", border: "1px solid #111", marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 } },

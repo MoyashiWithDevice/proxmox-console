@@ -4,16 +4,34 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"encoding/json"
+	"context"
+	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 )
 
-func runTerraformJob(jobID string, req *VMRequest) {
-	// 実行用ディレクトリ作成
-	workdir := filepath.Join("terraform", fmt.Sprintf("run_%d", time.Now().Unix()))
+func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
+
+	// Kratos からユーザーIDを取得
+	userID, err := getKratosUserIDFromRequest(httpreq)
+	if err != nil {
+		fmt.Println("Error getting Kratos user ID:", err)
+		return
+	}
+
+	// VMリクエストのハッシュを計算
+	vmhash, err := hashRequest(req)
+	if err != nil {
+		fmt.Println("Error hashing request:", err)
+		return
+	}
+
+	// ユーザディレクトリ配下に
+	// ハッシュ値をディレクトリ名とする実行用ディレクトリを作成
+	workdir := filepath.Join("terraform", "vms", userID, vmhash)
 	os.MkdirAll(workdir, 0755)
 
 	jobAny, _ := jobs.Load(jobID)
@@ -21,8 +39,8 @@ func runTerraformJob(jobID string, req *VMRequest) {
 
 	job.Workdir = workdir
 	job.LogPath = filepath.Join(workdir, "terraform.log")
-	jobs.Store(jobID, job)
 	job.Status = "running(init)"
+	jobs.Store(jobID, job)
 
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
@@ -55,20 +73,32 @@ password_hash = "%s"
 	copyFile("terraform/cloud-config.yaml", filepath.Join(workdir, "cloud-config.yaml"))
 
 	// Terraform実行
-	initCmd := exec.Command("terraform", "init")
-	initCmd.Dir = workdir
-	if _, err := runCmdWithLog(initCmd, logFile); err != nil {
+	tf, err := tfexec.NewTerraform(workdir, "terraform")
+	if err != nil {
 		job.Status = "error"
-		fmt.Println("Error running terraform init:", err)
+		fmt.Println("Error creating Terraform executor:", err)
+		return
+	}
+	tf.SetStdout(logFile)
+	tf.SetStderr(logFile)
+
+	ctx := context.Background()
+
+	// init
+	if err := tf.Init(ctx, tfexec.Upgrade(true)); err != nil {
+		job.Status = "error"
 		return
 	}
 
 	job.Status = "running(apply)"
-	applyCmd := exec.Command("terraform", "apply", "-auto-approve", "-var-file=runtime.tfvars")
-	applyCmd.Dir = workdir
-	if _, err := runCmdWithLog(applyCmd, logFile); err != nil {
+	jobs.Store(jobID, job)
+
+	// apply
+	if err := tf.Apply(ctx,
+		tfexec.VarFile("runtime.tfvars"),
+	); err != nil {
 		job.Status = "error"
-		fmt.Println("Error running terraform apply:", err)
+		fmt.Println("Error applying Terraform configuration:", err)
 		return
 	}
 
@@ -78,22 +108,32 @@ password_hash = "%s"
 }
 
 func getVMIP(job *Job) string {
-	logFile, _ := os.OpenFile(job.LogPath, os.O_APPEND|os.O_WRONLY, 0644)
-	defer logFile.Close()
-
-	cmd := exec.Command("terraform", "output", "-json", "vm_ip")
-	cmd.Dir = job.Workdir
-
-	out, err := runCmdWithLog(cmd, logFile)
+	tf, err := tfexec.NewTerraform(job.Workdir, "terraform")
 	if err != nil {
 		job.Status = "error"
-		fmt.Println("Error getting VM IP:", err)
 		return ""
 	}
 
+	ctx := context.Background()
+
+	// terraform output -json と同じ
+	out, err := tf.Output(ctx)
+	if err != nil {
+		job.Status = "error"
+		return ""
+	}
+
+	// vm_ip という output 名を直接取得
+	v, ok := out["vm_ip"]
+	if !ok {
+		return ""
+	}
+
+	// Value は interface{} なので JSON 経由で安全に []string に
+	b, _ := json.Marshal(v.Value)
+
 	var ips []string
-	if err := json.Unmarshal(out, &ips); err != nil {
-		fmt.Println("Error parsing IP output:", err)
+	if err := json.Unmarshal(b, &ips); err != nil {
 		return ""
 	}
 
@@ -121,7 +161,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername})
 
-	go runTerraformJob(jobID, &req)
+	go runTerraformJob(jobID, &req, r)
 
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
@@ -129,6 +169,55 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/status.html?id="+jobID, http.StatusSeeOther)
+}
+
+func userVMListHandler(w http.ResponseWriter, r *http.Request) {
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	vms, err := listUserVMs(userID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vms)
+}
+
+func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	vmidStr := r.URL.Query().Get("vmid")
+	if vmidStr == "" {
+		http.Error(w, "missing vmid", 400)
+		return
+	}
+
+	vmid, _ := strconv.Atoi(vmidStr)
+
+	vms, err := listUserVMs(userID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	for _, vm := range vms {
+		if vm.VMID == vmid {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(vm)
+			return
+		}
+	}
+
+	http.Error(w, "vm not found", 404)
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
@@ -156,4 +245,143 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func atoiSafe(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
+}
+
+func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
+	path := filepath.Join(workdir, "runtime.tfvars")
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(b), "\n")
+	out := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+
+		switch {
+		case strings.HasPrefix(trim, "servername"):
+			if name != "" {
+				out = append(out, fmt.Sprintf(`servername    = "%s"`, name))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "cpu"):
+			if cpu > 0 {
+				out = append(out, fmt.Sprintf(`cpu           = %d`, cpu))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "memory"):
+			if memory > 0 {
+				out = append(out, fmt.Sprintf(`memory        = %d`, memory))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "hdd"):
+			if hdd > 0 {
+				out = append(out, fmt.Sprintf(`hdd           = %d`, hdd))
+			} else {
+				out = append(out, line)
+			}
+
+		default:
+			out = append(out, line)
+		}
+	}
+
+	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0600)
+}
+
+func applyTerraform(workdir string) error {
+	tf, err := tfexec.NewTerraform(workdir, "terraform")
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+
+	if err := tf.Init(ctx); err != nil {
+		return err
+	}
+
+	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
+}
+
+func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
+
+	// TODO: 要実装
+	// workdir, err := findWorkdirByVMID(userID, vmid)
+	// if err != nil {
+	// 	return err
+	// }
+
+	workdir := filepath.Join("terraform", "vms", userID)
+	dirs, _ := os.ReadDir(workdir)
+
+	for _, d := range dirs {
+		tfpath := filepath.Join(workdir, d.Name(), "runtime.tfvars")
+		if _, err := os.Stat(tfpath); err == nil {
+			workdir = filepath.Join(workdir, d.Name())
+			break
+		}
+	}
+
+	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
+		return err
+	}
+
+	return applyTerraform(workdir)
+}
+
+func updateVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, _ := getKratosUserIDFromRequest(r)
+
+	var req struct {
+		VMID  int    `json:"vmid"`
+		Name  string `json:"name"`
+		Cores int    `json:"cores"`
+		Memory int   `json:"memory"`
+		HDD   int    `json:"hdd"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	if req.VMID == 0 {
+		http.Error(w, "missing vmid", 400)
+		return
+	}
+
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name})
+
+	err := updateVMResources(
+		userID,
+		req.Name,
+		req.VMID,
+		req.Cores,
+		req.Memory,
+		req.HDD,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }

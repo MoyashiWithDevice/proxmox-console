@@ -1,6 +1,0 @@
-kratos:
-  public_url: "http://kratos:4433"
-  login_url: "http://172.32.0.70:3000/login"
-
-app:
-  after_login_redirect: "http://172.32.0.70:8081"

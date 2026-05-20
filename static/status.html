@@ -80,7 +80,7 @@ function App() {
   useEffect(function() {
     if (!id) return;
     var iv = setInterval(function() {
-      fetch("/status?id=" + id).then(function(r) { return r.json(); }).then(function(data) {
+      fetch("/api/status?id=" + id).then(function(r) { return r.json(); }).then(function(data) {
         setStatus(data.status || "—");
         setIp(data.ip || "—");
         setLog(data.log || "");

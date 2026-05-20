@@ -100,7 +100,7 @@ function App() {
 
       /* Form */
       h("form", {
-        method: "POST", action: "/create-vm",
+        method: "POST", action: "/api/create",
         style: { display: "flex", flexDirection: "column", gap: 0 }
       },
         h("input", { type: "hidden", name: "cpu", value: cpu }),

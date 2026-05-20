@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>VM Detail</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+var h = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
+
+var iconPaths = {
+  server:  "M5 4H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M5 14H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-2",
+  monitor: "M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4",
+  logOut:  "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  arrowLeft: "M19 12H5M12 5l-7 7 7 7",
+};
+
+function Icon(props) {
+  return h("svg", {
+    width: props.size || 16, height: props.size || 16, viewBox: "0 0 24 24",
+    fill: "none", stroke: props.color || "#fff", strokeWidth: 2,
+    strokeLinecap: "round", strokeLinejoin: "round",
+    style: Object.assign({ flexShrink: 0 }, props.style || {}),
+  }, h("path", { d: iconPaths[props.name] }));
+}
+
+function App() {
+  var _v  = useState(null);  var vm       = _v[0];  var setVM      = _v[1];
+  var _vs = useState([]);    var vms      = _vs[0]; var setVMs     = _vs[1];
+  var _h  = useState(null);  var hovered  = _h[0];  var setHovered = _h[1];
+
+  var id = new URLSearchParams(location.search).get("vmid");
+
+  useEffect(function() {
+    /* VM detail */
+    fetch("/api/vm?vmid=" + id, { credentials: "include" })
+      .then(function(r) { return r.json(); })
+      .then(function(data) { setVM(data); })
+      .catch(function() {});
+
+    /* Sidebar VM list */
+    function fetchVMs() {
+      fetch("/api/vms", { credentials: "include" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { setVMs(data || []); })
+        .catch(function() {});
+    }
+    fetchVMs();
+    var iv = setInterval(fetchVMs, 7000);
+    return function() { clearInterval(iv); };
+  }, []);
+
+  /* ── Layout ── */
+  return h("div", { style: { display: "flex", flexDirection: "column", height: "100vh", background: "#000", color: "#fff", fontFamily: "'Inter', system-ui, sans-serif" } },
+
+    /* Header */
+    h("div", { style: { display: "flex", alignItems: "center", padding: "0 32px", height: 52, borderBottom: "1px solid #111", flexShrink: 0 } },
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+        h(Icon, { name: "server", size: 16, color: "#fff" }),
+        h("span", { style: { fontSize: 14, fontWeight: 600, color: "#fff", letterSpacing: "-0.01em" } }, "Proxmox Console"),
+        h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
+      ),
+      h("div", { style: { marginLeft: "auto" } },
+        h("button", {
+          "aria-label": "Logout",
+          onClick: function() {
+            fetch("/logout", { credentials: "include" })
+              .then(function(r) { return r.json(); })
+              .then(function(data) { window.location.href = data.logout_url; });
+          },
+          style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 }
+        },
+          h(Icon, { name: "logOut", size: 14, color: "#444" }), "Logout"
+        )
+      )
+    ),
+
+    /* Body */
+    h("div", { style: { display: "flex", flex: 1, overflow: "hidden" } },
+
+      /* ── Sidebar ── */
+      h("div", {
+        style: {
+          width: 210, minWidth: 210,
+          borderRight: "1px solid #111",
+          overflowY: "auto",
+          flexShrink: 0,
+          paddingTop: 8, paddingBottom: 8
+        }
+      },
+        /* Back to dashboard */
+        h("div", {
+          onClick: function() { window.location.href = "/"; },
+          style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 16px 10px", cursor: "pointer", fontSize: 12, color: "#333", borderBottom: "1px solid #0d0d0d", marginBottom: 8 }
+        },
+          h(Icon, { name: "arrowLeft", size: 12, color: "#2a2a2a" }),
+          "Dashboard"
+        ),
+
+        h("div", {
+          style: { padding: "4px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em" }
+        }, "Virtual Machines"),
+
+        vms.length === 0
+          ? h("div", { style: { padding: "6px 16px", fontSize: 12, color: "#333" } }, "なし")
+          : vms.map(function(v) {
+              var isActive = String(v.VMID) === String(id);
+              var isHover  = hovered === "vm-" + v.VMID;
+              return h("div", {
+                  key: v.VMID,
+                  onClick: function() { window.location.href = "/vm.html?vmid=" + v.VMID; },
+                  onMouseEnter: function() { setHovered("vm-" + v.VMID); },
+                  onMouseLeave: function() { setHovered(null); },
+                  style: {
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 16px", cursor: "pointer", fontSize: 13,
+                    color: isActive ? "#fff" : isHover ? "#aaa" : "#555",
+                    background: isActive ? "#111" : "transparent",
+                    borderLeft: isActive ? "2px solid #fff" : "2px solid transparent",
+                    userSelect: "none"
+                  }
+                },
+                h(Icon, { name: "monitor", size: 13, color: isActive ? "#fff" : isHover ? "#555" : "#333" }),
+                h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, v.Name)
+              );
+            })
+      ),
+
+      /* ── Main ── */
+      h("div", { style: { flex: 1, overflowY: "auto", padding: "40px" } },
+        h("h1", { style: { fontSize: 22, fontWeight: 300, letterSpacing: "-0.02em", marginBottom: 28 } }, "Virtual Machine"),
+
+        vm === null
+          ? h("div", { style: { fontSize: 13, color: "#333" } }, "Loading...")
+          : h(VMEditor, { vm: vm, setVM: setVM })
+      )
+    )
+  );
+}
+function VMEditor(props) {
+  var vm = props.vm;
+  var setVM = props.setVM;
+
+  var _n = useState("");   var name   = _n[0]; var setName   = _n[1];
+  var _c = useState(0);    var cores  = _c[0]; var setCores  = _c[1];
+  var _m = useState(0);    var memory = _m[0]; var setMemory = _m[1];
+  var _h = useState(0);    var hdd    = _h[0]; var setHdd    = _h[1];
+
+  var _s = useState(false); var saving = _s[0]; var setSaving = _s[1];
+
+  // ★ vm が来たら state を同期
+  useEffect(function() {
+    if (!vm) return;
+    setName(vm.Name || "");
+    setCores(vm.Cores || 0);
+    setMemory(vm.Memory || 0);
+    setHdd(vm.Hdd || 0);
+  }, [vm]);
+
+  function save() {
+    var newHdd = parseInt(hdd, 10);
+
+    if (newHdd < vm.Hdd) {
+      alert("HDDは減らせません");
+      return;
+    }
+
+    setSaving(true);
+    fetch("/api/update", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vmid: vm.VMID,
+        name: name,
+        cores: parseInt(cores, 10),
+        memory: parseInt(memory, 10),
+        hdd: newHdd
+      })
+    })
+    .then(function() {
+      return fetch("/api/vm?vmid=" + vm.VMID, { credentials: "include" });
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      setVM(data);
+      setSaving(false);
+    });
+  }
+
+  function inputStyle() {
+    return {
+      width: "100%",
+      background: "#0d0d0d",
+      border: "1px solid #222",
+      color: "#fff",
+      fontSize: 16,
+      padding: "8px 10px",
+      borderRadius: 6,
+      outline: "none"
+    };
+  }
+
+  function Field(label, node) {
+    return h("div", { style: { marginBottom: 20 } },
+      h("div", { style: { fontSize: 11, color: "#555", marginBottom: 6 } }, label),
+      node
+    );
+  }
+
+  return h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, maxWidth: 520 } }, [
+    Field("Name", h("input", { value: name, onChange: function(e){ setName(e.target.value); }, style: inputStyle() })),
+    Field("VMID", h("div", null, vm.VMID)),
+    Field("CPU", h("input", { type: "number", value: cores, onChange: function(e){ setCores(e.target.value); }, style: inputStyle() })),
+    Field("Memory", h("input", { type: "number", value: memory, onChange: function(e){ setMemory(e.target.value); }, style: inputStyle() })),
+    Field("HDD", h("input", { type: "number", value: hdd, onChange: function(e){ setHdd(e.target.value); }, style: inputStyle() })),
+    h("button", { onClick: save, disabled: saving }, saving ? "Saving..." : "Save")
+  ]);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>

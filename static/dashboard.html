@@ -85,6 +85,7 @@ var useEffect = React.useEffect;
 
 function App() {
   var _j = useState([]); var jobs = _j[0]; var setJobs = _j[1];
+  var _v = useState([]); var vms = _v[0]; var setVMs = _v[1];
   var _h = useState(null); var hovered = _h[0]; var setHovered = _h[1];
 
   useEffect(function() {
@@ -93,9 +94,22 @@ function App() {
         setJobs(data || []);
       }).catch(function() {});
     }
+    function fetchVMs() {
+      fetch("/api/vms", { credentials: "include" })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          setVMs(data || []);
+        }).catch(function(){});
+    }
+
+    fetchVMs();
+    var iv2 = setInterval(fetchVMs, 7000);
     fetchJobs();
     var iv = setInterval(fetchJobs, 5000);
-    return function() { clearInterval(iv); };
+    return function() {
+      clearInterval(iv);
+      clearInterval(iv2);
+    };
   }, []);
 
   var running = jobs.filter(function(j) { return j.status === "done"; }).length;
@@ -121,7 +135,9 @@ function App() {
         h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
       ),
       h("div", { style: { marginLeft: "auto" } },
-        h("button", { "aria-label": "Logout", onClick: function() { window.location.href = "/logout"; }, style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 } },
+        h("button", { "aria-label": "Logout", onClick: function() {
+          window.location.href = "/logout";
+        }, style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 } },
           h(Icon, { name: "logOut", size: 14, color: "#444" }), "Logout"
         )
       )
@@ -129,30 +145,66 @@ function App() {
 
     /* Body */
     h("div", { style: { display: "flex", flex: 1, overflow: "hidden" } },
+            /* Sidebar */
+      h("div", {
+        style: {
+          width: 210,
+          minWidth: 210,
+          borderRight: "1px solid #111",
+          overflowY: "auto",
+          flexShrink: 0,
+          paddingTop: 8,
+          paddingBottom: 8
+        }
+      },
+        h("div", {
+          style: {
+            padding: "8px 18px 4px",
+            fontSize: 10,
+            color: "#2a2a2a",
+            textTransform: "uppercase",
+            letterSpacing: "0.1em"
+          }
+        }, "Virtual Machines"),
 
-      /* Sidebar */
-      h("div", { style: { width: 210, minWidth: 210, borderRight: "1px solid #111", overflowY: "auto", flexShrink: 0, paddingTop: 8, paddingBottom: 8 } },
-        h("div", { style: { padding: "8px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em" } }, "Virtual Machines"),
-        jobs.length === 0
-          ? h("div", { style: { padding: "6px 16px", fontSize: 12, color: "#333" } }, "なし")
-          : jobs.map(function(job) {
-              var s = statusConfig[job.status] || { dot: "#555", color: "#555" };
-              var isHover = hovered === "sb-" + job.id;
+        vms.length === 0
+          ? h("div",
+              { style: { padding: "6px 16px", fontSize: 12, color: "#333" } },
+              "なし"
+            )
+          : vms.map(function(vm) {
+              var isHover = hovered === "vm-" + vm.VMID;
+
               return h("div", {
-                key: job.id,
-                onClick: function() { window.location.href = "/status.html?id=" + job.id; },
-                onMouseEnter: function() { setHovered("sb-" + job.id); },
-                onMouseLeave: function() { setHovered(null); },
-                style: {
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "6px 16px", cursor: "pointer", fontSize: 13,
-                  color: isHover ? "#aaa" : "#555",
-                  userSelect: "none",
-                }
-              },
-                h("span", { style: { width: 6, height: 6, borderRadius: "50%", background: s.dot, flexShrink: 0 } }),
-                h(Icon, { name: job.status === "done" ? "monitor" : "package", size: 13, color: isHover ? "#555" : "#333" }),
-                h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, job.servername || job.id.slice(-6))
+                  key: vm.VMID,
+                  onClick: function() {
+                    window.location.href = "/vm.html?vmid=" + vm.VMID;
+                  },
+                  onMouseEnter: function() { setHovered("vm-" + vm.VMID); },
+                  onMouseLeave: function() { setHovered(null); },
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 16px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: isHover ? "#aaa" : "#555",
+                    userSelect: "none"
+                  }
+                },
+                h(Icon, {
+                  name: "monitor",
+                  size: 13,
+                  color: isHover ? "#555" : "#333"
+                }),
+                h("span", {
+                  style: {
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }
+                }, vm.Name)
               );
             })
       ),
@@ -206,41 +258,29 @@ function App() {
             h(Icon, { name: "refresh", size: 11 }), " Refresh"
           )
         ),
-        jobs.length === 0
+        vms.length === 0
           ? h("div", { style: { padding: "48px 0", textAlign: "center", border: "1px solid #111" } },
-              h("div", { style: { fontSize: 13, color: "#333", marginBottom: 16 } }, "作成済みのマシンはありません"),
-              h("button", {
-                onClick: function() { window.location.href = "/resource.html"; },
-                style: { background: "transparent", border: "1px solid #111", borderRadius: 4, padding: "8px 20px", color: "#444", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, margin: "0 auto" }
-              },
-                h(Icon, { name: "plus", size: 12 }), " 新規作成"
-              )
+              h("div", { style: { fontSize: 13, color: "#333", marginBottom: 16 } }, "作成済みのマシンはありません")
             )
           : h("div", { style: { overflowX: "auto" } },
               h("table", { style: { width: "100%", borderCollapse: "collapse" } },
                 h("thead", null,
-                  h("tr", null, ["ID", "サーバ名", "ステータス", "IP", "作成日時"].map(function(hdr) {
+                  h("tr", null, ["VMID", "名前", "IP", "CPU", "Memory"].map(function(hdr) {
                     return h("th", { key: hdr, style: th }, hdr);
                   }))
                 ),
-                h("tbody", null, jobs.map(function(job) {
-                  return h("tr", {
-                    key: job.id,
-                    onClick: function() { window.location.href = "/status.html?id=" + job.id; },
-                    style: { background: hovered === job.id ? "#080808" : "transparent", cursor: "pointer" },
-                    onMouseEnter: function() { setHovered(job.id); },
-                    onMouseLeave: function() { setHovered(null); },
-                  },
-                    h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, job.id.slice(-6)),
+                h("tbody", null, vms.map(function(vm) {
+                  return h("tr", { key: vm.VMID },
+                    h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, vm.VMID),
                     h("td", { style: Object.assign({}, td, { color: "#fff" }) },
                       h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                        h(Icon, { name: job.status === "done" ? "monitor" : "package", size: 13, color: job.status === "done" ? "#333" : "#555" }),
-                        job.servername || "—"
+                        h(Icon, { name: "monitor", size: 13, color: "#333" }),
+                        vm.Name
                       )
                     ),
-                    h("td", { style: td }, Badge(job.status)),
-                    h("td", { style: Object.assign({}, td, { color: "#444", fontFamily: "monospace", fontSize: 12 }) }, job.ip || "—"),
-                    h("td", { style: Object.assign({}, td, { color: "#333" }) }, formatTime(job.id))
+                    h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, vm.IP || "—"),
+                    h("td", { style: td }, vm.Cores),
+                    h("td", { style: td }, vm.Memory + " MB")
                   );
                 }))
               )

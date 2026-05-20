@@ -1,0 +1,28 @@
+# sed -i 's/localhost/192.168.1.1/g' kratos/kratos.yaml
+dsn: postgres://kratos:secret@kratos-postgres:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+
+serve:
+  public:
+    base_url: http://localhost:4433    # Kratos自身の公開URL (ブラウザがKratos APIに直接アクセスする用)
+  admin:
+    base_url: http://localhost:4434    # Kratos管理API (Kratos UIからアクセス)
+
+selfservice:
+  default_browser_return_url: http://localhost:8080  # ログイン後のリダイレクト先 (AppのURL - 別サーバの可能性あり)
+  allowed_return_urls:
+    - http://localhost:8080  # ログイン後のリダイレクト先 (AppのURL - 別サーバの可能性あり)
+  methods:
+    password:
+      enabled: true
+
+  flows:
+    login:
+      ui_url: http://localhost:3000/login            # ログイン画面 (Kratos UI - 別サーバの可能性あり)
+    registration:
+      ui_url: http://localhost:3000/registration      # 登録画面 (Kratos UI - 別サーバの可能性あり)
+    error:
+      ui_url: http://localhost:3000/error             # エラー画面 (Kratos UI - 別サーバの可能性あり)
+identity:
+  schemas:
+    - id: default
+      url: file:///etc/config/identity.schema.json

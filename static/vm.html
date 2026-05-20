@@ -180,7 +180,7 @@ function VMEditor(props) {
     }
 
     setSaving(true);
-    fetch("/update", {
+    fetch("/api/update", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

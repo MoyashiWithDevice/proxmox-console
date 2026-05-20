@@ -16,9 +16,26 @@ import (
 func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 
 	// Kratos からユーザーIDを取得
-	userID, err := getKratosUserIDFromRequest(httpreq)
+	kratosUserID, err := getKratosUserIDFromRequest(httpreq)
 	if err != nil {
 		fmt.Println("Error getting Kratos user ID:", err)
+		jobAny, _ := jobs.Load(jobID)
+		if job, ok := jobAny.(*Job); ok {
+			job.Status = "error"
+			jobs.Store(jobID, job)
+		}
+		return
+	}
+
+	// DB からユーザーIDを取得または作成
+	dbUserID, err := getDatabaseUserID(kratosUserID)
+	if err != nil {
+		fmt.Println("Error getting database user ID:", err)
+		jobAny, _ := jobs.Load(jobID)
+		if job, ok := jobAny.(*Job); ok {
+			job.Status = "error"
+			jobs.Store(jobID, job)
+		}
 		return
 	}
 
@@ -26,12 +43,17 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	vmhash, err := hashRequest(req)
 	if err != nil {
 		fmt.Println("Error hashing request:", err)
+		jobAny, _ := jobs.Load(jobID)
+		if job, ok := jobAny.(*Job); ok {
+			job.Status = "error"
+			jobs.Store(jobID, job)
+		}
 		return
 	}
 
 	// ユーザディレクトリ配下に
 	// ハッシュ値をディレクトリ名とする実行用ディレクトリを作成
-	workdir := filepath.Join("terraform", "vms", userID, vmhash)
+	workdir := filepath.Join("terraform", "vms", kratosUserID, vmhash)
 	os.MkdirAll(workdir, 0755)
 
 	jobAny, _ := jobs.Load(jobID)
@@ -49,6 +71,7 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	if err != nil {
 		fmt.Println("Error hashing password:", err)
 		job.Status = "error"
+		jobs.Store(jobID, job)
 		return
 	}
 
@@ -77,6 +100,7 @@ password_hash = "%s"
 	if err != nil {
 		job.Status = "error"
 		fmt.Println("Error creating Terraform executor:", err)
+		jobs.Store(jobID, job)
 		return
 	}
 	tf.SetStdout(logFile)
@@ -87,6 +111,7 @@ password_hash = "%s"
 	// init
 	if err := tf.Init(ctx, tfexec.Upgrade(true)); err != nil {
 		job.Status = "error"
+		jobs.Store(jobID, job)
 		return
 	}
 
@@ -99,6 +124,25 @@ password_hash = "%s"
 	); err != nil {
 		job.Status = "error"
 		fmt.Println("Error applying Terraform configuration:", err)
+		jobs.Store(jobID, job)
+		return
+	}
+
+	// Terraform state から VM ID とノード名を取得
+	vmID, nodeName, err := getVMIDAndNode(workdir)
+	if err != nil {
+		fmt.Println("Error getting VM ID and node:", err)
+		job.Status = "error"
+		jobs.Store(jobID, job)
+		return
+	}
+
+	// DB に VM を記録
+	_, err = createVM(dbUserID, vmID, nodeName, workdir)
+	if err != nil {
+		fmt.Println("Error creating VM in database:", err)
+		job.Status = "error"
+		jobs.Store(jobID, job)
 		return
 	}
 
@@ -141,6 +185,31 @@ func getVMIP(job *Job) string {
 		return ips[0]
 	}
 	return ""
+}
+
+// getVMIDAndNode は Terraform state から VM ID とノード名を取得します
+func getVMIDAndNode(workdir string) (int, string, error) {
+	tfstatePath := filepath.Join(workdir, "terraform.tfstate")
+	b, err := os.ReadFile(tfstatePath)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to read tfstate: %w", err)
+	}
+
+	var tfstate TFState
+	if err := json.Unmarshal(b, &tfstate); err != nil {
+		return 0, "", fmt.Errorf("failed to unmarshal tfstate: %w", err)
+	}
+
+	for _, resource := range tfstate.Resources {
+		if resource.Type == "proxmox_virtual_environment_vm" && len(resource.Instances) > 0 {
+			attrs := resource.Instances[0].Attributes
+			vmID := int(attrs["vm_id"].(float64))
+			nodeName := fmt.Sprint(attrs["node_name"])
+			return vmID, nodeName, nil
+		}
+	}
+
+	return 0, "", fmt.Errorf("vm not found in tfstate")
 }
 
 func createVMHandler(w http.ResponseWriter, r *http.Request) {

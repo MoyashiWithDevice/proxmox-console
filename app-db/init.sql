@@ -1,4 +1,4 @@
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id         SERIAL      PRIMARY KEY,
     kratos_id  TEXT        NOT NULL UNIQUE,
     role       TEXT        NOT NULL DEFAULT 'user',
@@ -6,7 +6,7 @@ CREATE TABLE users (
     created_at TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE vms (
+CREATE TABLE IF NOT EXISTS vms (
     id             SERIAL      PRIMARY KEY,
     user_id        INTEGER     NOT NULL REFERENCES users(id),
     proxmox_vm_id  INTEGER     NOT NULL,

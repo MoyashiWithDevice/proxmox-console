@@ -40,31 +40,78 @@ function Icon(props) {
 
 function App() {
   var _v  = useState(null);  var vm       = _v[0];  var setVM      = _v[1];
-  var _vs = useState([]);    var vms      = _vs[0]; var setVMs     = _vs[1];
+  var _is = useState([]);    var items    = _is[0]; var setItems   = _is[1];
   var _h  = useState(null);  var hovered  = _h[0];  var setHovered = _h[1];
+  var _t  = useState(new URLSearchParams(location.search).get("job_id") ? "status" : "details");  var tab      = _t[0];  var setTab     = _t[1];
+  var _s  = useState("—");  var status   = _s[0];  var setStatus  = _s[1];
+  var _l  = useState("");   var log      = _l[0];  var setLog     = _l[1];
 
-  var id = new URLSearchParams(location.search).get("vmid");
+  var params = new URLSearchParams(location.search);
+  var id = params.get("vmid");
+  var jobId = params.get("job_id");
 
   useEffect(function() {
-    /* VM detail */
-    fetch("/api/vm?vmid=" + id, { credentials: "include" })
-      .then(function(r) { return r.json(); })
-      .then(function(data) { setVM(data); })
-      .catch(function() {});
+    if (id) {
+      fetch("/api/vm?vmid=" + id, { credentials: "include" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) { setVM(data); })
+        .catch(function() { setVM(null); });
+    } else {
+      setVM(null);
+    }
 
-    /* Sidebar VM list */
-    function fetchVMs() {
+    function fetchItems() {
       fetch("/api/vms", { credentials: "include" })
         .then(function(r) { return r.json(); })
-        .then(function(data) { setVMs(data || []); })
+        .then(function(data) { setItems(data || []); })
         .catch(function() {});
     }
-    fetchVMs();
-    var iv = setInterval(fetchVMs, 7000);
-    return function() { clearInterval(iv); };
-  }, []);
 
-  /* ── Layout ── */
+    function fetchStatus() {
+      if (!jobId) {
+        setStatus("—");
+        setLog("");
+        return;
+      }
+      fetch("/api/status?id=" + jobId, { credentials: "include" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          setStatus(data.status || "—");
+          setLog(data.log || "");
+        })
+        .catch(function() {});
+    }
+
+    fetchItems();
+    fetchStatus();
+    var iv = setInterval(function() {
+      fetchItems();
+      fetchStatus();
+    }, 5000);
+    return function() { clearInterval(iv); };
+  }, [id, jobId]);
+
+  var vmItems = items.filter(function(item) { return item.type === "vm"; });
+  var selectedId = jobId || id;
+  var selectedType = jobId ? "job" : "vm";
+  var isJob = selectedType === "job";
+
+  function tabButton(label, value) {
+    var active = tab === value;
+    return h("button", {
+      onClick: function() { setTab(value); },
+      style: {
+        background: active ? "#111" : "transparent",
+        color: active ? "#fff" : "#888",
+        border: "1px solid #222",
+        borderRadius: 6,
+        padding: "10px 18px",
+        cursor: "pointer",
+        fontSize: 13
+      }
+    }, label);
+  }
+
   return h("div", { style: { display: "flex", flexDirection: "column", height: "100vh", background: "#000", color: "#fff", fontFamily: "'Inter', system-ui, sans-serif" } },
 
     /* Header */
@@ -77,11 +124,7 @@ function App() {
       h("div", { style: { marginLeft: "auto" } },
         h("button", {
           "aria-label": "Logout",
-          onClick: function() {
-            fetch("/logout", { credentials: "include" })
-              .then(function(r) { return r.json(); })
-              .then(function(data) { window.location.href = data.logout_url; });
-          },
+          onClick: function() { window.location.href = "/logout"; },
           style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 }
         },
           h(Icon, { name: "logOut", size: 14, color: "#444" }), "Logout"
@@ -92,17 +135,10 @@ function App() {
     /* Body */
     h("div", { style: { display: "flex", flex: 1, overflow: "hidden" } },
 
-      /* ── Sidebar ── */
+      /* Sidebar */
       h("div", {
-        style: {
-          width: 210, minWidth: 210,
-          borderRight: "1px solid #111",
-          overflowY: "auto",
-          flexShrink: 0,
-          paddingTop: 8, paddingBottom: 8
-        }
+        style: { width: 210, minWidth: 210, borderRight: "1px solid #111", overflowY: "auto", flexShrink: 0, paddingTop: 8, paddingBottom: 8 }
       },
-        /* Back to dashboard */
         h("div", {
           onClick: function() { window.location.href = "/"; },
           style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 16px 10px", cursor: "pointer", fontSize: 12, color: "#333", borderBottom: "1px solid #0d0d0d", marginBottom: 8 }
@@ -110,16 +146,12 @@ function App() {
           h(Icon, { name: "arrowLeft", size: 12, color: "#2a2a2a" }),
           "Dashboard"
         ),
-
-        h("div", {
-          style: { padding: "4px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em" }
-        }, "Virtual Machines"),
-
-        vms.length === 0
+        h("div", { style: { padding: "4px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em" } }, "Virtual Machines"),
+        vmItems.length === 0
           ? h("div", { style: { padding: "6px 16px", fontSize: 12, color: "#333" } }, "なし")
-          : vms.map(function(v) {
+          : vmItems.map(function(v) {
               var isActive = String(v.VMID) === String(id);
-              var isHover  = hovered === "vm-" + v.VMID;
+              var isHover = hovered === "vm-" + v.VMID;
               return h("div", {
                   key: v.VMID,
                   onClick: function() { window.location.href = "/vm.html?vmid=" + v.VMID; },
@@ -140,13 +172,33 @@ function App() {
             })
       ),
 
-      /* ── Main ── */
+      /* Main */
       h("div", { style: { flex: 1, overflowY: "auto", padding: "40px" } },
-        h("h1", { style: { fontSize: 22, fontWeight: 300, letterSpacing: "-0.02em", marginBottom: 28 } }, "Virtual Machine"),
+        h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } },
+          h("h1", { style: { fontSize: 22, fontWeight: 300, letterSpacing: "-0.02em" } }, "Virtual Machine"),
+          h("div", { style: { display: "flex", gap: 8 } },
+            tabButton("Details", "details"),
+            tabButton("Status", "status")
+          )
+        ),
 
-        vm === null
-          ? h("div", { style: { fontSize: 13, color: "#333" } }, "Loading...")
-          : h(VMEditor, { vm: vm, setVM: setVM })
+        tab === "status"
+          ? h("div", null,
+              h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 18 } },
+                h("span", { style: { fontSize: 11, color: "#333", textTransform: "uppercase", letterSpacing: "0.08em" } }, "Status"),
+                h("span", { style: { color: status === "done" ? "#22c55e" : status === "error" ? "#f43f5e" : "#f59e0b", fontSize: 13, fontWeight: 600 } }, status)
+              ),
+              !jobId
+                ? h("div", { style: { color: "#888", fontSize: 13 } }, "このページの Status は job_id パラメータでのみ利用できます。")
+                : h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, minHeight: 320, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 13, color: "#ccc", overflowX: "auto" } }, log)
+            )
+          : h("div", null,
+              !id
+                ? h("div", { style: { color: "#888", fontSize: 13 } }, "このページでは vmid パラメータがないと詳細情報を表示できません。")
+                : vm === null
+                  ? h("div", { style: { fontSize: 13, color: "#333" } }, "Loading...")
+                  : h(VMEditor, { vm: vm, setVM: setVM })
+            )
       )
     )
   );

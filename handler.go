@@ -146,6 +146,7 @@ password_hash = "%s"
 		return
 	}
 
+	// 完了後は DB で running に変更してからログを破棄する
 	if err := updateVMStatus(createdVM.ID, "running"); err != nil {
 		fmt.Println("Error updating VM status in database:", err)
 		job.Status = "error"
@@ -156,6 +157,10 @@ password_hash = "%s"
 	job.IP = getVMIP(job)
 	job.Status = "done"
 	jobs.Store(jobID, job)
+
+	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
+		fmt.Println("Error removing log file:", err)
+	}
 }
 
 func getVMIP(job *Job) string {
@@ -250,7 +255,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
 		return
 	}
-	http.Redirect(w, r, "/status.html?id="+jobID, http.StatusSeeOther)
+	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
 }
 
 func userVMListHandler(w http.ResponseWriter, r *http.Request) {

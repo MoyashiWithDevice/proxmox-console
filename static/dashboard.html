@@ -95,7 +95,7 @@ function App() {
     if (item.type === "job") {
       return h("tr", {
         key: item.id,
-        onClick: function() { window.location.href = "/status.html?id=" + item.id; },
+        onClick: function() { window.location.href = "/vm.html?job_id=" + item.id; },
         style: { cursor: "pointer", background: "#050505" }
       },
       h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, "—"),
@@ -251,7 +251,7 @@ function App() {
                 var isHover = hovered === "job-" + job.id;
                 return h("div", {
                     key: "job-" + job.id,
-                    onClick: function() { window.location.href = "/status.html?id=" + job.id; },
+                    onClick: function() { window.location.href = "/vm.html?job_id=" + job.id; },
                     onMouseEnter: function() { setHovered("job-" + job.id); },
                     onMouseLeave: function() { setHovered(null); },
                     style: {

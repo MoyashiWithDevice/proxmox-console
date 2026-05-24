@@ -222,16 +222,20 @@ function VMEditor(props) {
   var _c = useState(0);    var cores  = _c[0]; var setCores  = _c[1];
   var _m = useState(0);    var memory = _m[0]; var setMemory = _m[1];
   var _h = useState(0);    var hdd    = _h[0]; var setHdd    = _h[1];
-
+  var _e = useState(false); var editing = _e[0]; var setEditing = _e[1];
   var _s = useState(false); var saving = _s[0]; var setSaving = _s[1];
 
-  // ★ vm が来たら state を同期
-  useEffect(function() {
-    if (!vm) return;
+  function resetFields() {
     setName(vm.Name || "");
     setCores(vm.Cores || 0);
     setMemory(vm.Memory || 0);
     setHdd(vm.Hdd || 0);
+  }
+
+  // ★ vm が来たら state を同期
+  useEffect(function() {
+    if (!vm) return;
+    resetFields();
   }, [vm]);
 
   function save() {
@@ -262,6 +266,10 @@ function VMEditor(props) {
     .then(function(data) {
       setVM(data);
       setSaving(false);
+      setEditing(false);
+    })
+    .catch(function() {
+      setSaving(false);
     });
   }
 
@@ -285,13 +293,50 @@ function VMEditor(props) {
     );
   }
 
+  function viewValue(value) {
+    return h("div", { style: { color: "#fff", fontSize: 16, padding: "10px 12px", background: "#0d0d0d", borderRadius: 6, border: "1px solid #222" } }, value);
+  }
+
   return h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, maxWidth: 520 } }, [
-    Field("Name", h("input", { value: name, onChange: function(e){ setName(e.target.value); }, style: inputStyle() })),
-    Field("VMID", h("div", null, vm.VMID)),
-    Field("CPU", h("input", { type: "number", value: cores, onChange: function(e){ setCores(e.target.value); }, style: inputStyle() })),
-    Field("Memory", h("input", { type: "number", value: memory, onChange: function(e){ setMemory(e.target.value); }, style: inputStyle() })),
-    Field("HDD", h("input", { type: "number", value: hdd, onChange: function(e){ setHdd(e.target.value); }, style: inputStyle() })),
-    h("button", { onClick: save, disabled: saving }, saving ? "Saving..." : "Save")
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, [
+      h("div", { style: { fontSize: 16, fontWeight: 600 } }, "VM Details"),
+      editing
+        ? h("div", null,
+            h("button", {
+              onClick: function() {
+                resetFields();
+                setEditing(false);
+              },
+              style: { marginRight: 8, padding: "8px 14px", background: "transparent", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
+            }, "Cancel"),
+            h("button", {
+              onClick: save,
+              disabled: saving,
+              style: { padding: "8px 14px", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", cursor: saving ? "default" : "pointer" }
+            }, saving ? "Saving..." : "Save")
+          )
+        : h("button", {
+            onClick: function() { setEditing(true); },
+            style: { padding: "8px 14px", background: "#111", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
+          }, "Edit")
+    ]),
+    Field("Name", editing
+      ? h("input", { value: name, onChange: function(e){ setName(e.target.value); }, style: inputStyle() })
+      : viewValue(vm.Name || "—")
+    ),
+    Field("VMID", viewValue(vm.VMID)),
+    Field("CPU", editing
+      ? h("input", { type: "number", value: cores, onChange: function(e){ setCores(e.target.value); }, style: inputStyle() })
+      : viewValue(vm.Cores)
+    ),
+    Field("Memory", editing
+      ? h("input", { type: "number", value: memory, onChange: function(e){ setMemory(e.target.value); }, style: inputStyle() })
+      : viewValue(vm.Memory)
+    ),
+    Field("HDD", editing
+      ? h("input", { type: "number", value: hdd, onChange: function(e){ setHdd(e.target.value); }, style: inputStyle() })
+      : viewValue(vm.Hdd)
+    )
   ]);
 }
 

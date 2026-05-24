@@ -170,7 +170,12 @@ function App() {
         h("span", { style: { fontSize: 14, fontWeight: 600, color: "#fff", letterSpacing: "-0.01em" } }, "Proxmox Console"),
         h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
       ),
-      h("div", { style: { marginLeft: "auto" } },
+      h("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 } },
+        h("button", { "aria-label": "Support", onClick: function() {
+          window.location.href = "/support.html";
+        }, style: { background: "none", border: "1px solid #222", cursor: "pointer", padding: "8px 12px", borderRadius: 8, color: "#ddd", fontSize: 12 } },
+          "サポート"
+        ),
         h("button", { "aria-label": "Logout", onClick: function() {
           window.location.href = "/logout";
         }, style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 } },

@@ -1,17 +1,18 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-	"net/url"
-	"os"
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"os/exec"
+	"fmt"
 	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/amoghe/go-crypt"
 	"github.com/joho/godotenv"
@@ -49,6 +50,7 @@ func main() {
 	http.HandleFunc("/api/status", requireLogin(statusHandler))
 	http.HandleFunc("/api/jobs", requireLogin(listJobsHandler))
 	http.HandleFunc("/api/settings", settingsAPIHandler)
+	http.HandleFunc("/api/support", requireLogin(supportHandler))
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)
@@ -91,10 +93,10 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	type jobResp struct {
-		ID          string `json:"id"`
-		Status      string `json:"status"`
-		IP          string `json:"ip"`
-		Servername  string `json:"servername"`
+		ID         string `json:"id"`
+		Status     string `json:"status"`
+		IP         string `json:"ip"`
+		Servername string `json:"servername"`
 	}
 
 	var result []jobResp
@@ -111,6 +113,40 @@ func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func supportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "認証情報が取得できませんでした", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Subject string `json:"subject"`
+		VMID    string `json:"vmid"`
+		Details string `json:"details"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "リクエストの読み取りに失敗しました", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Subject) == "" || strings.TrimSpace(req.Details) == "" {
+		http.Error(w, "件名と詳細は必須です。", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("support request from user=%s vmid=%s subject=%s details=%s", userID, req.VMID, req.Subject, req.Details)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "サポート依頼を送信しました。"})
 }
 
 func copyFile(src, dst string) {

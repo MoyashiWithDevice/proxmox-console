@@ -145,6 +145,7 @@ password_hash = "%s"
 		jobs.Store(jobID, job)
 		return
 	}
+	fmt.Println("記録しました");
 
 	job.IP = getVMIP(job)
 	job.Status = "done"

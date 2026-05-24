@@ -138,14 +138,20 @@ password_hash = "%s"
 	}
 
 	// DB に VM を記録
-	_, err = createVM(dbUserID, vmID, nodeName, workdir)
+	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
 	if err != nil {
 		fmt.Println("Error creating VM in database:", err)
 		job.Status = "error"
 		jobs.Store(jobID, job)
 		return
 	}
-	fmt.Println("記録しました");
+
+	if err := updateVMStatus(createdVM.ID, "running"); err != nil {
+		fmt.Println("Error updating VM status in database:", err)
+		job.Status = "error"
+		jobs.Store(jobID, job)
+		return
+	}
 
 	job.IP = getVMIP(job)
 	job.Status = "done"

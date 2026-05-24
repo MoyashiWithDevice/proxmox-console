@@ -146,6 +146,8 @@ password_hash = "%s"
 		return
 	}
 
+	job.VMID = vmID
+
 	// 完了後は DB で running に変更してからログを破棄する
 	if err := updateVMStatus(createdVM.ID, "running"); err != nil {
 		fmt.Println("Error updating VM status in database:", err)
@@ -364,10 +366,13 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	job := jobAny.(*Job)
 	logBytes, _ := os.ReadFile(job.LogPath)
 
-	resp := map[string]string{
+	resp := map[string]interface{}{
 		"status": job.Status,
 		"ip":     job.IP,
 		"log":    string(logBytes),
+	}
+	if job.VMID != 0 {
+		resp["vmid"] = job.VMID
 	}
 
 	w.Header().Set("Content-Type", "application/json")

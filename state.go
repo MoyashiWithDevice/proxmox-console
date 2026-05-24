@@ -27,6 +27,19 @@ type VMInfo struct {
 	Status string `json:"status,omitempty"`
 }
 
+func findJobIPForVM(vmid int) string {
+	var ip string
+	jobs.Range(func(_, value interface{}) bool {
+		job := value.(*Job)
+		if job.VMID == vmid && job.IP != "" {
+			ip = job.IP
+			return false
+		}
+		return true
+	})
+	return ip
+}
+
 func listUserVMs(userID string) ([]VMInfo, error) {
 	// KratosIDからAppIDを取得
 	dbUserID, err := getDatabaseUserID(userID)
@@ -52,12 +65,18 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 		tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
 		b, err := os.ReadFile(tfstatePath)
 		if err != nil {
+			if ip := findJobIPForVM(vm.VMID); ip != "" {
+				vm.IP = ip
+			}
 			vms = append(vms, vm)
 			continue
 		}
 
 		var state TFState
 		if err := json.Unmarshal(b, &state); err != nil {
+			if ip := findJobIPForVM(vm.VMID); ip != "" {
+				vm.IP = ip
+			}
 			vms = append(vms, vm)
 			continue
 		}
@@ -85,12 +104,18 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 			if ip := parseIPv4Addresses(attr["ipv4_addresses"]); ip != "" {
 				vm.IP = ip
 			}
+			if jobIP := findJobIPForVM(vm.VMID); jobIP != "" {
+				vm.IP = jobIP
+			}
 
 			vms = append(vms, vm)
 			found = true
 		}
 
 		if !found {
+			if ip := findJobIPForVM(vm.VMID); ip != "" {
+				vm.IP = ip
+			}
 			vms = append(vms, vm)
 		}
 	}
@@ -144,26 +169,52 @@ func parseFirstMapInt(value interface{}, key string) (int, bool) {
 }
 
 func parseIPv4Addresses(value interface{}) string {
+	var fallback string
+	isLoopback := func(ip string) bool {
+		return ip == "127.0.0.1" || strings.HasPrefix(ip, "127.") || ip == "::1"
+	}
+
+	sanitize := func(raw string) string {
+		if raw == "" {
+			return ""
+		}
+		return strings.Split(raw, "/")[0]
+	}
+
 	switch v := value.(type) {
 	case []interface{}:
 		for _, item := range v {
 			switch inner := item.(type) {
 			case string:
-				if inner != "" {
-					return strings.Split(inner, "/")[0]
+				ip := sanitize(inner)
+				if ip == "" {
+					continue
+				}
+				if !isLoopback(ip) {
+					return ip
+				}
+				if fallback == "" {
+					fallback = ip
 				}
 			case []interface{}:
 				if len(inner) > 0 {
-					return fmt.Sprint(inner[0])
+					ip := sanitize(fmt.Sprint(inner[0]))
+					if ip == "" {
+						continue
+					}
+					if !isLoopback(ip) {
+						return ip
+					}
+					if fallback == "" {
+						fallback = ip
+					}
 				}
 			}
 		}
 	case string:
-		if v != "" {
-			return strings.Split(v, "/")[0]
-		}
+		return sanitize(v)
 	}
-	return ""
+	return fallback
 }
 
 func parseIP(ipconfig string) string {

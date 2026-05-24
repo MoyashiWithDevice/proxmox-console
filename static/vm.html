@@ -45,6 +45,7 @@ function App() {
   var _t  = useState(new URLSearchParams(location.search).get("job_id") ? "status" : "details");  var tab      = _t[0];  var setTab     = _t[1];
   var _s  = useState("—");  var status   = _s[0];  var setStatus  = _s[1];
   var _l  = useState("");   var log      = _l[0];  var setLog     = _l[1];
+  var _j  = useState(null);  var jobVMID  = _j[0];  var setJobVMID = _j[1];
 
   var params = new URLSearchParams(location.search);
   var id = params.get("vmid");
@@ -71,6 +72,7 @@ function App() {
       if (!jobId) {
         setStatus("—");
         setLog("");
+        setJobVMID(null);
         return;
       }
       fetch("/api/status?id=" + jobId, { credentials: "include" })
@@ -78,6 +80,15 @@ function App() {
         .then(function(data) {
           setStatus(data.status || "—");
           setLog(data.log || "");
+          if (data.vmid) {
+            setJobVMID(data.vmid);
+            if (!id) {
+              fetch("/api/vm?vmid=" + data.vmid, { credentials: "include" })
+                .then(function(r) { return r.json(); })
+                .then(function(vmData) { setVM(vmData); })
+                .catch(function() { setVM(null); });
+            }
+          }
         })
         .catch(function() {});
     }
@@ -193,8 +204,8 @@ function App() {
                 : h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, minHeight: 320, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 13, color: "#ccc", overflowX: "auto" } }, log)
             )
           : h("div", null,
-              !id
-                ? h("div", { style: { color: "#888", fontSize: 13 } }, "このページでは vmid パラメータがないと詳細情報を表示できません。")
+              !id && !jobVMID
+                ? h("div", { style: { color: "#888", fontSize: 13 } }, "このページでは vmid または job_id の作成完了情報が必要です。")
                 : vm === null
                   ? h("div", { style: { fontSize: 13, color: "#333" } }, "Loading...")
                   : h(VMEditor, { vm: vm, setVM: setVM })

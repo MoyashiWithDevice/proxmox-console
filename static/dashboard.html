@@ -84,37 +84,73 @@ var useState = React.useState;
 var useEffect = React.useEffect;
 
 function App() {
-  var _j = useState([]); var jobs = _j[0]; var setJobs = _j[1];
-  var _v = useState([]); var vms = _v[0]; var setVMs = _v[1];
+  var _i = useState([]); var items = _i[0]; var setItems = _i[1];
   var _h = useState(null); var hovered = _h[0]; var setHovered = _h[1];
 
-  useEffect(function() {
-    function fetchJobs() {
-      fetch("/api/jobs").then(function(r) { return r.json(); }).then(function(data) {
-        setJobs(data || []);
-      }).catch(function() {});
+  function jobStatusColor(status) {
+    return status === "error" ? "#f43f5e" : "#f59e0b";
+  }
+
+  function renderMachineRow(item) {
+    if (item.type === "job") {
+      return h("tr", {
+        key: item.id,
+        onClick: function() { window.location.href = "/vm.html?job_id=" + item.id; },
+        style: { cursor: "pointer", background: "#050505" }
+      },
+      h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, "—"),
+      h("td", { style: Object.assign({}, td, { color: "#fff" }) },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          h(Icon, { name: "monitor", size: 13, color: jobStatusColor(item.status) }),
+          item.servername + " (作成中)"
+        )
+      ),
+      h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, item.ip || "—"),
+      h("td", { style: td }, "—"),
+      h("td", { style: td }, "—")
+      );
     }
-    function fetchVMs() {
+
+    return h("tr", {
+      key: item.VMID,
+      onClick: function() { window.location.href = "/vm.html?vmid=" + item.VMID; },
+      style: { cursor: "pointer" }
+    },
+    h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, item.VMID),
+    h("td", { style: Object.assign({}, td, { color: "#fff" }) },
+      h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+        h(Icon, { name: "monitor", size: 13, color: "#333" }),
+        item.Name
+      )
+    ),
+    h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, item.IP || "—"),
+    h("td", { style: td }, item.Cores),
+    h("td", { style: td }, item.Memory + " MB")
+    );
+  }
+
+  useEffect(function() {
+    function fetchItems() {
       fetch("/api/vms", { credentials: "include" })
         .then(function(r){ return r.json(); })
         .then(function(data){
-          setVMs(data || []);
+          setItems(data || []);
         }).catch(function(){});
     }
 
-    fetchVMs();
-    var iv2 = setInterval(fetchVMs, 7000);
-    fetchJobs();
-    var iv = setInterval(fetchJobs, 5000);
+    fetchItems();
+    var iv = setInterval(fetchItems, 7000);
     return function() {
       clearInterval(iv);
-      clearInterval(iv2);
     };
   }, []);
 
-  var running = jobs.filter(function(j) { return j.status === "done"; }).length;
-  var errored = jobs.filter(function(j) { return j.status === "error"; }).length;
-  var pending = jobs.filter(function(j) { return j.status !== "done" && j.status !== "error"; }).length;
+  var activeJobs = items.filter(function(item) { return item.type === "job"; });
+  var completedVMs = items.filter(function(item) { return item.type === "vm"; });
+  var combinedItems = items;
+  var running = completedVMs.length;
+  var errored = activeJobs.filter(function(job) { return job.status === "error"; }).length;
+  var pending = activeJobs.length;
 
   var th = { padding: "10px 16px", fontSize: 11, color: "#333", fontWeight: 500, textAlign: "left", borderBottom: "1px solid #111", textTransform: "uppercase", letterSpacing: "0.07em", whiteSpace: "nowrap" };
   var td = { padding: "14px 16px", fontSize: 13, color: "#ccc", borderBottom: "1px solid #0d0d0d", whiteSpace: "nowrap" };
@@ -167,46 +203,79 @@ function App() {
           }
         }, "Virtual Machines"),
 
-        vms.length === 0
+        completedVMs.length === 0 && activeJobs.length === 0
           ? h("div",
               { style: { padding: "6px 16px", fontSize: 12, color: "#333" } },
               "なし"
             )
-          : vms.map(function(vm) {
-              var isHover = hovered === "vm-" + vm.VMID;
+          : h("div", null,
+              completedVMs.map(function(vm) {
+                var isHover = hovered === "vm-" + vm.VMID;
 
-              return h("div", {
-                  key: vm.VMID,
-                  onClick: function() {
-                    window.location.href = "/vm.html?vmid=" + vm.VMID;
+                return h("div", {
+                    key: vm.VMID,
+                    onClick: function() {
+                      window.location.href = "/vm.html?vmid=" + vm.VMID;
+                    },
+                    onMouseEnter: function() { setHovered("vm-" + vm.VMID); },
+                    onMouseLeave: function() { setHovered(null); },
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 16px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: isHover ? "#aaa" : "#555",
+                      userSelect: "none"
+                    }
                   },
-                  onMouseEnter: function() { setHovered("vm-" + vm.VMID); },
-                  onMouseLeave: function() { setHovered(null); },
-                  style: {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 16px",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    color: isHover ? "#aaa" : "#555",
-                    userSelect: "none"
-                  }
-                },
-                h(Icon, {
-                  name: "monitor",
-                  size: 13,
-                  color: isHover ? "#555" : "#333"
-                }),
-                h("span", {
-                  style: {
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap"
-                  }
-                }, vm.Name)
-              );
-            })
+                  h(Icon, {
+                    name: "monitor",
+                    size: 13,
+                    color: isHover ? "#555" : "#333"
+                  }),
+                  h("span", {
+                    style: {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }
+                  }, vm.Name)
+                );
+              }),
+              activeJobs.length > 0 ? h("div", {
+                style: { padding: "8px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 14 }
+              }, "作成中") : null,
+              activeJobs.map(function(job) {
+                var isHover = hovered === "job-" + job.id;
+                return h("div", {
+                    key: "job-" + job.id,
+                    onClick: function() { window.location.href = "/vm.html?job_id=" + job.id; },
+                    onMouseEnter: function() { setHovered("job-" + job.id); },
+                    onMouseLeave: function() { setHovered(null); },
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 16px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: isHover ? "#aaa" : "#888",
+                      userSelect: "none"
+                    }
+                  },
+                  h(Icon, { name: "monitor", size: 13, color: jobStatusColor(job.status) }),
+                  h("span", {
+                    style: {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }
+                  }, job.servername + " (" + (job.status === "error" ? "エラー" : "作成中") + ")")
+                );
+              })
+            )
       ),
 
       /* Main */
@@ -239,7 +308,7 @@ function App() {
 
       /* Meta info */
       h("div", { style: { display: "flex", gap: 32, flexWrap: "wrap" } },
-        [["VM稼働数", running + " 台"], ["エラー", errored + " 件"], ["処理中", pending + " 件"], ["合計", jobs.length + " 件"]].map(function(m) {
+        [["VM稼働数", running + " 台"], ["エラー", errored + " 件"], ["処理中", pending + " 件"], ["合計", items.length + " 件"]].map(function(m) {
           return h("div", { key: m[0] },
             h("div", { style: { fontSize: 11, color: "#333", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.07em" } }, m[0]),
             h("div", { style: { fontSize: 13, color: "#888" } }, m[1])
@@ -253,12 +322,12 @@ function App() {
       /* Table */
       h("div", null,
         h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 } },
-          h("span", { style: { fontSize: 13, color: "#555" } }, "作成済みマシン一覧"),
+          h("span", { style: { fontSize: 13, color: "#555" } }, "作成済み / 作成中マシン一覧"),
           h("button", { "aria-label": "Refresh", onClick: function() { window.location.reload(); }, style: { background: "transparent", border: "1px solid #111", borderRadius: 4, padding: "5px 12px", color: "#444", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 } },
             h(Icon, { name: "refresh", size: 11 }), " Refresh"
           )
         ),
-        vms.length === 0
+        combinedItems.length === 0
           ? h("div", { style: { padding: "48px 0", textAlign: "center", border: "1px solid #111" } },
               h("div", { style: { fontSize: 13, color: "#333", marginBottom: 16 } }, "作成済みのマシンはありません")
             )
@@ -269,20 +338,7 @@ function App() {
                     return h("th", { key: hdr, style: th }, hdr);
                   }))
                 ),
-                h("tbody", null, vms.map(function(vm) {
-                  return h("tr", { key: vm.VMID },
-                    h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, vm.VMID),
-                    h("td", { style: Object.assign({}, td, { color: "#fff" }) },
-                      h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                        h(Icon, { name: "monitor", size: 13, color: "#333" }),
-                        vm.Name
-                      )
-                    ),
-                    h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, vm.IP || "—"),
-                    h("td", { style: td }, vm.Cores),
-                    h("td", { style: td }, vm.Memory + " MB")
-                  );
-                }))
+                h("tbody", null, combinedItems.map(renderMachineRow))
               )
             )
       )

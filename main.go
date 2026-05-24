@@ -24,6 +24,12 @@ func main() {
 	PORT = os.Getenv("PORT")
 	loadConfig()
 
+	// データベース初期化
+	if err := initDB(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer closeDB()
+
 	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
 

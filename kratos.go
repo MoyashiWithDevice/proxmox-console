@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -45,6 +46,16 @@ func getKratosUserIDFromRequest(r *http.Request) (string, error) {
 	}
 
 	return data.Identity.ID, nil
+}
+
+// getDatabaseUserID は Kratos ID からデータベースのユーザーID を取得または作成します
+func getDatabaseUserID(kratosID string) (int, error) {
+	user, err := getOrCreateUser(kratosID)
+	if err != nil {
+		log.Printf("failed to get or create user for kratos id %s: %v", kratosID, err)
+		return 0, err
+	}
+	return user.ID, nil
 }
 
 func hashRequest(req *VMRequest) (string, error) {

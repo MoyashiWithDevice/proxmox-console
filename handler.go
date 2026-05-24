@@ -226,6 +226,12 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 
+	kratosUserID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	req := VMRequest{
 		CPU:        atoiSafe(r.FormValue("cpu")),
 		Memory:     atoiSafe(r.FormValue("memory")),
@@ -235,7 +241,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		Password:   r.FormValue("password"),
 	}
 
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
 
 	go runTerraformJob(jobID, &req, r)
 
@@ -260,8 +266,53 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type vmResponse struct {
+		Type       string `json:"type"`
+		Name       string `json:"Name,omitempty"`
+		VMID       int    `json:"VMID,omitempty"`
+		IP         string `json:"IP,omitempty"`
+		Memory     int    `json:"Memory,omitempty"`
+		Cores      int    `json:"Cores,omitempty"`
+		Hdd        int    `json:"Hdd,omitempty"`
+		Status     string `json:"status,omitempty"`
+		Servername string `json:"servername,omitempty"`
+		ID         string `json:"id,omitempty"`
+	}
+
+	var result []vmResponse
+	for _, vm := range vms {
+		if strings.ToLower(vm.Status) == "creating" {
+			continue
+		}
+		result = append(result, vmResponse{
+			Type:   "vm",
+			Name:   vm.Name,
+			VMID:   vm.VMID,
+			IP:     vm.IP,
+			Memory: vm.Memory,
+			Cores:  vm.Cores,
+			Hdd:    vm.Hdd,
+			Status: vm.Status,
+		})
+	}
+
+	jobs.Range(func(key, value interface{}) bool {
+		job := value.(*Job)
+		if job.OwnerID != userID || job.Status == "done" {
+			return true
+		}
+		result = append(result, vmResponse{
+			Type:       "job",
+			ID:         key.(string),
+			Status:     job.Status,
+			Servername: job.Servername,
+			IP:         job.IP,
+		})
+		return true
+	})
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vms)
+	json.NewEncoder(w).Encode(result)
 }
 
 func vmDetailHandler(w http.ResponseWriter, r *http.Request) {

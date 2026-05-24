@@ -8,6 +8,7 @@ type Job struct {
 	LogPath    string
 	Workdir    string
 	Servername string
+	OwnerID    string
 }
 
 var jobs sync.Map

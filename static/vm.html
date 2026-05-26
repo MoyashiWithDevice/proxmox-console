@@ -38,6 +38,24 @@ function Icon(props) {
   }, h("path", { d: iconPaths[props.name] }));
 }
 
+var statusConfig = {
+  done:    { dot: "#22c55e", color: "#22c55e" },
+  running: { dot: "#22c55e", color: "#22c55e" },
+  stopped: { dot: "#f43f5e", color: "#f43f5e" },
+  error:   { dot: "#f43f5e", color: "#f43f5e" },
+  "running(init)":  { dot: "#f59e0b", color: "#f59e0b" },
+  "running(apply)": { dot: "#f59e0b", color: "#f59e0b" },
+  unknown: { dot: "#555", color: "#555" },
+};
+
+function Badge(status) {
+  var s = statusConfig[status] || statusConfig.unknown;
+  return h("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: s.color } },
+    h("span", { style: { width: 8, height: 8, borderRadius: "50%", background: s.dot, flexShrink: 0 } }),
+    status
+  );
+}
+
 function App() {
   var _v  = useState(null);  var vm       = _v[0];  var setVM      = _v[1];
   var _is = useState([]);    var items    = _is[0]; var setItems   = _is[1];
@@ -137,7 +155,15 @@ function App() {
         h("span", { style: { fontSize: 14, fontWeight: 600, color: "#fff", letterSpacing: "-0.01em" } }, "Proxmox Console"),
         h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
       ),
-      h("div", { style: { marginLeft: "auto" } },
+      h("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 } },
+        h("button", {
+          "aria-label": "Support",
+          onClick: function() {
+            var target = id || jobVMID ? "/support.html?vmid=" + encodeURIComponent(id || jobVMID) : "/support.html";
+            window.location.href = target;
+          },
+          style: { background: "none", border: "1px solid #222", cursor: "pointer", padding: "8px 12px", borderRadius: 8, color: "#ddd", fontSize: 12 }
+        }, "サポート"),
         h("button", {
           "aria-label": "Logout",
           onClick: function() { window.location.href = "/logout"; },
@@ -168,6 +194,8 @@ function App() {
           : vmItems.map(function(v) {
               var isActive = String(v.VMID) === String(id);
               var isHover = hovered === "vm-" + v.VMID;
+              var vmStatus = v.status || v.Status || "unknown";
+              var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
               return h("div", {
                   key: v.VMID,
                   onClick: function() { window.location.href = "/vm.html?vmid=" + v.VMID; },
@@ -182,6 +210,7 @@ function App() {
                     userSelect: "none"
                   }
                 },
+                h("span", { style: { width: 8, height: 8, borderRadius: "50%", background: statusStyle.dot, flexShrink: 0, marginTop: 2 } }),
                 h(Icon, { name: "monitor", size: 13, color: isActive ? "#fff" : isHover ? "#555" : "#333" }),
                 h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, v.Name)
               );
@@ -208,7 +237,7 @@ function App() {
                 h("span", { style: { fontSize: 11, color: "#333", textTransform: "uppercase", letterSpacing: "0.08em" } }, "Creation Status"),
                 h("span", { style: { color: status === "done" ? "#22c55e" : status === "error" ? "#f43f5e" : "#f59e0b", fontSize: 13, fontWeight: 600 } }, status)
               ),
-              h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, minHeight: 320, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 13, color: "#ccc", overflowX: "auto" } }, log),
+              h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, height: 320, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 13, color: "#ccc", overflowX: "auto", overflowY: "auto" } }, log),
               jobVMID && status === "done"
                 ? h("div", { style: { marginTop: 16, color: "#ccc", fontSize: 13 } }, "このまま待つと10秒後に自動で作成済みVMページに遷移します。")
                 : null,

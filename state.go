@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +61,14 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 		vm := VMInfo{
 			VMID:   dbVm.ProxmoxVMID,
 			Status: dbVm.Status,
+		}
+
+		if strings.EqualFold(dbVm.Status, "completed") {
+			if status, err := getProxmoxVMStatus(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
+				vm.Status = status
+			} else {
+				log.Printf("warning: failed to resolve Proxmox runtime status for VM %d on node %s: %v", dbVm.ProxmoxVMID, dbVm.NodeName, err)
+			}
 		}
 
 		// その他のリソースはtfstateから取得する

@@ -148,8 +148,8 @@ password_hash = "%s"
 
 	job.VMID = vmID
 
-	// 完了後は DB で running に変更してからログを破棄する
-	if err := updateVMStatus(createdVM.ID, "running"); err != nil {
+	// 完了後は DB で completed に変更してからログを破棄する
+	if err := updateVMStatus(createdVM.ID, "completed"); err != nil {
 		fmt.Println("Error updating VM status in database:", err)
 		job.Status = "error"
 		jobs.Store(jobID, job)

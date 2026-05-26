@@ -43,10 +43,11 @@ var statusConfig = {
   error:   { dot: "#f43f5e", color: "#f43f5e" },
   "running(init)":  { dot: "#f59e0b", color: "#f59e0b" },
   "running(apply)": { dot: "#f59e0b", color: "#f59e0b" },
+  unknown: { dot: "#555", color: "#555" },
 };
 
 function Badge(status) {
-  var s = statusConfig[status] || { dot: "#555", color: "#555" };
+  var s = statusConfig[status] || statusConfig.unknown;
   return h("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: s.color } },
     h("span", { style: { width: 7, height: 7, borderRadius: "50%", background: s.dot, flexShrink: 0 } }),
     status
@@ -111,6 +112,9 @@ function App() {
       );
     }
 
+    var vmStatus = item.status || item.Status || "unknown";
+    var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
+
     return h("tr", {
       key: item.VMID,
       onClick: function() { window.location.href = "/vm.html?vmid=" + item.VMID; },
@@ -118,9 +122,12 @@ function App() {
     },
     h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, item.VMID),
     h("td", { style: Object.assign({}, td, { color: "#fff" }) },
-      h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-        h(Icon, { name: "monitor", size: 13, color: "#333" }),
-        item.Name
+      h("div", { style: { display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" } },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          h(Icon, { name: "monitor", size: 13, color: statusStyle.color }),
+          item.Name
+        ),
+        Badge(vmStatus)
       )
     ),
     h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, item.IP || "—"),
@@ -216,6 +223,8 @@ function App() {
           : h("div", null,
               completedVMs.map(function(vm) {
                 var isHover = hovered === "vm-" + vm.VMID;
+                var vmStatus = vm.status || vm.Status || "unknown";
+                var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
 
                 return h("div", {
                     key: vm.VMID,
@@ -235,6 +244,16 @@ function App() {
                       userSelect: "none"
                     }
                   },
+                  h("span", {
+                    style: {
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: statusStyle.dot,
+                      flexShrink: 0,
+                      marginTop: 2
+                    }
+                  }),
                   h(Icon, {
                     name: "monitor",
                     size: 13,

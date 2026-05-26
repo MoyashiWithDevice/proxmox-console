@@ -1,8 +1,9 @@
 package main
 import (
-	"os"
-	"log"
 	"encoding/json"
+	"log"
+	"os"
+	"strings"
 )
 
 type ResourceLimit struct {
@@ -30,6 +31,8 @@ type Config struct {
 	App struct {
 		URL string
 	}
+
+	Proxmox ProxmoxConfig
 }
 
 var AppConfig Config
@@ -53,6 +56,13 @@ func loadConfig() {
 	AppConfig.Kratos.APIURL     = mustGetenv("KRATOS_API_URL")
 	AppConfig.Kratos.UIURL      = mustGetenv("KRATOS_UI_URL")
 	AppConfig.App.URL           = mustGetenv("APP_URL")
+
+	AppConfig.Proxmox.APIURL = os.Getenv("PROXMOX_API_URL")
+	AppConfig.Proxmox.APITokenID = os.Getenv("PROXMOX_API_TOKEN_ID")
+	AppConfig.Proxmox.APITokenSecret = os.Getenv("PROXMOX_API_TOKEN_SECRET")
+	AppConfig.Proxmox.Username = os.Getenv("PROXMOX_USERNAME")
+	AppConfig.Proxmox.Password = os.Getenv("PROXMOX_PASSWORD")
+	AppConfig.Proxmox.InsecureSkipVerify = strings.EqualFold(os.Getenv("PROXMOX_INSECURE_SKIP_VERIFY"), "true")
 	
 	// Load settings from setting.json
 	loadSettingsConfig()

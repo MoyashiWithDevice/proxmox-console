@@ -14,7 +14,7 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			http.Error(w, "auth service unavailable", http.StatusServiceUnavailable)
+			http.Redirect(w, r, "/error.html?code=503", http.StatusFound)
 			return
 		}
 		defer resp.Body.Close()
@@ -25,11 +25,10 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if resp.StatusCode == http.StatusUnauthorized {
-			// Go 側の /login へリダイレクト。Kratos URL はブラウザに見せない
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
-		http.Error(w, "unexpected auth response", http.StatusInternalServerError)
+		http.Redirect(w, r, "/error.html?code=500", http.StatusFound)
 	}
 }

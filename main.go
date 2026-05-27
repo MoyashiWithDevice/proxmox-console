@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"path/filepath"
 
 	"github.com/amoghe/go-crypt"
 	"github.com/joho/godotenv"
@@ -31,12 +32,24 @@ func main() {
 	}
 	defer closeDB()
 
+	// エラーページは認証なしで配信
+	http.HandleFunc("/error.html", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./static/error.html")
+	})
+
 	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
 
 		// ルートは dashboard.html を表示
 		if r.URL.Path == "/" {
 			http.ServeFile(w, r, "./static/dashboard.html")
+			return
+		}
+
+		// 静的ファイルが存在しない場合は404エラーページへ
+		fp := filepath.Join("./static", filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(fp); err != nil || info.IsDir() {
+			http.Redirect(w, r, "/error.html?code=404", http.StatusFound)
 			return
 		}
 

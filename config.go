@@ -63,7 +63,13 @@ func loadConfig() {
 	AppConfig.Proxmox.Username = os.Getenv("PROXMOX_USERNAME")
 	AppConfig.Proxmox.Password = os.Getenv("PROXMOX_PASSWORD")
 	AppConfig.Proxmox.InsecureSkipVerify = strings.EqualFold(os.Getenv("PROXMOX_INSECURE_SKIP_VERIFY"), "true")
-	
+
+	// Terraform 用環境変数を設定 (.env の値を TF_VAR_ 経由で Terraform に渡す)
+	tfEndpoint := strings.TrimSuffix(AppConfig.Proxmox.APIURL, "/api2/json")
+	os.Setenv("TF_VAR_proxmox_endpoint", tfEndpoint)
+	os.Setenv("TF_VAR_proxmox_username", AppConfig.Proxmox.Username)
+	os.Setenv("TF_VAR_proxmox_password", AppConfig.Proxmox.Password)
+
 	// Load settings from setting.json
 	loadSettingsConfig()
 }

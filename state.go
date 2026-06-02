@@ -114,6 +114,9 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 			if ip := parseIPv4Addresses(attr["ipv4_addresses"]); ip != "" {
 				vm.IP = ip
 			}
+			if apiIP, err := getProxmoxVMIP(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil && apiIP != "" {
+				vm.IP = apiIP
+			}
 			if jobIP := findJobIPForVM(vm.VMID); jobIP != "" {
 				vm.IP = jobIP
 			}

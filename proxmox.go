@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Telmate/proxmox-api-go/proxmox"
 )
@@ -68,4 +69,37 @@ func getProxmoxVMStatus(ctx context.Context, nodeName string, vmid int) (string,
 	}
 
 	return status, nil
+}
+
+func getProxmoxVMIP(ctx context.Context, nodeName string, vmid int) (string, error) {
+	client, err := newProxmoxClient(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	vmRef := proxmox.NewVmRef(proxmox.GuestID(uint32(vmid)))
+	if nodeName != "" {
+		vmRef.SetNode(nodeName)
+	}
+
+	interfaces, err := client.GetVmAgentNetworkInterfaces(ctx, vmRef)
+	if err != nil {
+		if strings.Contains(err.Error(), "guest agent is not running") || strings.Contains(err.Error(), "vm is not running") {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get proxmox vm agent network interfaces: %w", err)
+	}
+
+	for _, iface := range interfaces {
+		for _, ip := range iface.IpAddresses {
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil {
+				return ip4.String(), nil
+			}
+		}
+	}
+
+	return "", nil
 }

@@ -147,6 +147,7 @@ password_hash = "%s"
 	}
 
 	job.VMID = vmID
+	job.NodeName = nodeName
 
 	// 完了後は DB で completed に変更してからログを破棄する
 	if err := updateVMStatus(createdVM.ID, "completed"); err != nil {
@@ -156,49 +157,17 @@ password_hash = "%s"
 		return
 	}
 
-	job.IP = getVMIP(job)
+	if job.VMID != 0 {
+		if ip, err := getProxmoxVMIP(context.Background(), job.NodeName, job.VMID); err == nil && ip != "" {
+			job.IP = ip
+		}
+	}
 	job.Status = "done"
 	jobs.Store(jobID, job)
 
 	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
 		fmt.Println("Error removing log file:", err)
 	}
-}
-
-func getVMIP(job *Job) string {
-	tf, err := tfexec.NewTerraform(job.Workdir, "terraform")
-	if err != nil {
-		job.Status = "error"
-		return ""
-	}
-
-	ctx := context.Background()
-
-	// terraform output -json と同じ
-	out, err := tf.Output(ctx)
-	if err != nil {
-		job.Status = "error"
-		return ""
-	}
-
-	// vm_ip という output 名を直接取得
-	v, ok := out["vm_ip"]
-	if !ok {
-		return ""
-	}
-
-	// Value は interface{} なので JSON 経由で安全に []string に
-	b, _ := json.Marshal(v.Value)
-
-	var ips []string
-	if err := json.Unmarshal(b, &ips); err != nil {
-		return ""
-	}
-
-	if len(ips) > 0 {
-		return ips[0]
-	}
-	return ""
 }
 
 func ensureTerraformTemplateLinks(workdir string) error {

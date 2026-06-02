@@ -8,6 +8,7 @@ type Job struct {
 	VMID       int
 	LogPath    string
 	Workdir    string
+	NodeName   string
 	Servername string
 	OwnerID    string
 }

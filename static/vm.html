@@ -418,10 +418,48 @@ function VMEditor(props) {
                 style: { padding: "8px 14px", background: "#2563eb", border: "none", borderRadius: 6, color: "#fff", cursor: saving ? "default" : "pointer" }
               }, saving ? "Saving..." : "Save")
             )
-          : h("button", {
-              onClick: function() { setEditing(true); },
-              style: { padding: "8px 14px", background: "#111", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
-            }, "Edit")
+          : h("div", { style: { display: 'flex', gap: 8 } },
+              h("button", {
+                onClick: function() { setEditing(true); },
+                style: { padding: "8px 14px", background: "#111", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
+              }, "Edit"),
+              h("button", {
+                onClick: function(e) {
+                  e.stopPropagation();
+                  var action = (vm && (vm.Status || vm.status) === 'running') ? 'stop' : 'start';
+                  if (action === 'stop' && !confirm('このVMを停止しますか？')) return;
+                  fetch('/api/vm/' + action, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vmid: vm.VMID })
+                  }).then(function(res){
+                    console.log('Response status:', res.status, 'ok:', res.ok, 'contentType:', res.headers.get('content-type'));
+                    if (!res.ok) {
+                      return res.text().then(function(t){ 
+                        console.log('Error response text:', t);
+                        throw new Error('HTTP ' + res.status + ': ' + t); 
+                      });
+                    }
+                    return res.text().then(function(text) {
+                      console.log('Response text:', text);
+                      if (!text) throw new Error('Empty response body');
+                      return JSON.parse(text);
+                    });
+                  }).then(function(){
+                    // refresh VM details
+                    fetch('/api/vm?vmid=' + vm.VMID, { credentials: 'include' })
+                      .then(function(r){ return r.json(); })
+                      .then(function(data){ setVM(data); })
+                      .catch(function(){});
+                  }).catch(function(err){ 
+                    console.error('Full error:', err);
+                    alert('操作に失敗しました: ' + err.message); 
+                  });
+                },
+                style: { padding: "8px 14px", background: "#0b1220", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
+              }, (vm && (vm.Status || vm.status) === 'running') ? 'Stop' : 'Start')
+            )
       ]),
 
       h("div", { style: { marginBottom: 24, padding: 18, background: "#0f172a", borderRadius: 8, border: "1px solid #1f2937" } }, [

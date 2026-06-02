@@ -128,3 +128,53 @@ func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 
 	return nil
 }
+
+// startProxmoxVM は Proxmox 上の VM を起動します（非同期）
+func startProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
+	// バックグラウンドで実行して、すぐに返す
+	go func() {
+		// コンテキストなしでタイムアウトなく実行
+		client, err := newProxmoxClient(context.Background())
+		if err != nil {
+			fmt.Printf("Failed to create proxmox client: %v\n", err)
+			return
+		}
+
+		vmRef := proxmox.NewVmRef(proxmox.GuestID(uint32(vmid)))
+		if nodeName != "" {
+			vmRef.SetNode(nodeName)
+		}
+
+		if _, err := client.StartVm(context.Background(), vmRef); err != nil {
+			fmt.Printf("Failed to start proxmox vm: %v\n", err)
+			return
+		}
+		fmt.Printf("Successfully started VM %d\n", vmid)
+	}()
+	return nil
+}
+
+// stopProxmoxVM は Proxmox 上の VM を停止します（非同期）
+func stopProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
+	// バックグラウンドで実行して、すぐに返す
+	go func() {
+		// コンテキストなしでタイムアウトなく実行
+		client, err := newProxmoxClient(context.Background())
+		if err != nil {
+			fmt.Printf("Failed to create proxmox client: %v\n", err)
+			return
+		}
+
+		vmRef := proxmox.NewVmRef(proxmox.GuestID(uint32(vmid)))
+		if nodeName != "" {
+			vmRef.SetNode(nodeName)
+		}
+
+		if _, err := client.StopVm(context.Background(), vmRef); err != nil {
+			fmt.Printf("Failed to stop proxmox vm: %v\n", err)
+			return
+		}
+		fmt.Printf("Successfully stopped VM %d\n", vmid)
+	}()
+	return nil
+}

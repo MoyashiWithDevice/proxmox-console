@@ -197,6 +197,41 @@ func getVM(vmID int) (*VM, error) {
 	return vm, nil
 }
 
+func getVMByProxmoxID(proxmoxID int) (*VM, error) {
+	vm := &VM{}
+	err := db.QueryRow(
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1",
+		proxmoxID,
+	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm: %w", err)
+	}
+
+	return vm, nil
+}
+
+func deleteVMByProxmoxID(proxmoxID int) error {
+	result, err := db.Exec(
+		"DELETE FROM vms WHERE proxmox_vm_id = $1",
+		proxmoxID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete vm: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 // updateVMStatus はVM のステータスを更新します
 func updateVMStatus(vmID int, status string) error {
 	result, err := db.Exec(

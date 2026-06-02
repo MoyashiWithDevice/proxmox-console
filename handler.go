@@ -1,16 +1,16 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
-	"context"
-	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 )
 
 func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
@@ -87,13 +87,13 @@ password_hash = "%s"
 	)
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
-	// ファイルをコピー
-	copyFile("terraform/provider.tf", filepath.Join(workdir, "provider.tf"))
-	copyFile("terraform/variables.tf", filepath.Join(workdir, "variables.tf"))
-	copyFile("terraform/proxmox.auto.tfvars", filepath.Join(workdir, "proxmox.auto.tfvars"))
-	copyFile("terraform/snippets.tf", filepath.Join(workdir, "snippets.tf"))
-	copyFile("terraform/vm.tf", filepath.Join(workdir, "vm.tf"))
-	copyFile("terraform/cloud-config.yaml", filepath.Join(workdir, "cloud-config.yaml"))
+	// ルートの共通テンプレートを各VMワークディレクトリにリンク
+	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+		fmt.Println("Error linking Terraform templates:", err)
+		job.Status = "error"
+		jobs.Store(jobID, job)
+		return
+	}
 
 	// Terraform実行
 	tf, err := tfexec.NewTerraform(workdir, "terraform")
@@ -199,6 +199,36 @@ func getVMIP(job *Job) string {
 		return ips[0]
 	}
 	return ""
+}
+
+func ensureTerraformTemplateLinks(workdir string) error {
+	templateFiles := []string{
+		"provider.tf",
+		"variables.tf",
+		"proxmox.auto.tfvars",
+		"snippets.tf",
+		"vm.tf",
+		"cloud-config.yaml",
+	}
+
+	for _, name := range templateFiles {
+		dst := filepath.Join(workdir, name)
+		if _, err := os.Lstat(dst); err == nil {
+			continue
+		}
+
+		src := filepath.Join("terraform", name)
+		rel, err := filepath.Rel(workdir, src)
+		if err != nil {
+			rel = src
+		}
+
+		if err := os.Symlink(rel, dst); err != nil {
+			return fmt.Errorf("failed to create symlink for %s: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 // getVMIDAndNode は Terraform state から VM ID とノード名を取得します
@@ -450,23 +480,32 @@ func applyTerraform(workdir string) error {
 	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
 }
 
+func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
+	dbUserID, err := getDatabaseUserID(kratosID)
+	if err != nil {
+		return "", err
+	}
+
+	vm, err := getVM(vmid)
+	if err != nil {
+		return "", err
+	}
+
+	if vm.UserID != dbUserID {
+		return "", fmt.Errorf("unauthorized")
+	}
+
+	return vm.TFWorkdir, nil
+}
+
 func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
+	workdir, err := getVMWorkdirForUser(userID, vmid)
+	if err != nil {
+		return err
+	}
 
-	// TODO: 要実装
-	// workdir, err := findWorkdirByVMID(userID, vmid)
-	// if err != nil {
-	// 	return err
-	// }
-
-	workdir := filepath.Join("terraform", "vms", userID)
-	dirs, _ := os.ReadDir(workdir)
-
-	for _, d := range dirs {
-		tfpath := filepath.Join(workdir, d.Name(), "runtime.tfvars")
-		if _, err := os.Stat(tfpath); err == nil {
-			workdir = filepath.Join(workdir, d.Name())
-			break
-		}
+	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+		return err
 	}
 
 	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
@@ -485,11 +524,11 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := getKratosUserIDFromRequest(r)
 
 	var req struct {
-		VMID  int    `json:"vmid"`
-		Name  string `json:"name"`
-		Cores int    `json:"cores"`
-		Memory int   `json:"memory"`
-		HDD   int    `json:"hdd"`
+		VMID   int    `json:"vmid"`
+		Name   string `json:"name"`
+		Cores  int    `json:"cores"`
+		Memory int    `json:"memory"`
+		HDD    int    `json:"hdd"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -514,6 +553,10 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 		req.HDD,
 	)
 	if err != nil {
+		if err.Error() == "unauthorized" {
+			http.Error(w, "unauthorized", http.StatusForbidden)
+			return
+		}
 		http.Error(w, err.Error(), 500)
 		return
 	}

@@ -103,3 +103,28 @@ func getProxmoxVMIP(ctx context.Context, nodeName string, vmid int) (string, err
 
 	return "", nil
 }
+
+func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
+	client, err := newProxmoxClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	vmRef := proxmox.NewVmRef(proxmox.GuestID(uint32(vmid)))
+	if nodeName != "" {
+		vmRef.SetNode(nodeName)
+	}
+
+	status, err := getProxmoxVMStatus(ctx, nodeName, vmid)
+	if err == nil && strings.EqualFold(status, "running") {
+		if _, err := client.StopVm(ctx, vmRef); err != nil {
+			return fmt.Errorf("failed to stop proxmox vm: %w", err)
+		}
+	}
+
+	if _, err := client.DeleteVm(ctx, vmRef); err != nil {
+		return fmt.Errorf("failed to delete proxmox vm: %w", err)
+	}
+
+	return nil
+}

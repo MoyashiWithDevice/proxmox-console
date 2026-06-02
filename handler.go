@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"net/http"
@@ -322,6 +324,16 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		deleteVMHandler(w, r)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -455,7 +467,7 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 		return "", err
 	}
 
-	vm, err := getVM(vmid)
+	vm, err := getVMByProxmoxID(vmid)
 	if err != nil {
 		return "", err
 	}
@@ -465,6 +477,74 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 	}
 
 	return vm.TFWorkdir, nil
+}
+
+func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vmidStr := r.URL.Query().Get("vmid")
+	if vmidStr == "" {
+		http.Error(w, "missing vmid", http.StatusBadRequest)
+		return
+	}
+
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
+		http.Error(w, "invalid vmid", http.StatusBadRequest)
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "vm not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if vm.UserID != dbUserID {
+		http.Error(w, "unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if err := deleteProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := deleteVMByProxmoxID(vmid); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "vm not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.RemoveAll(vm.TFWorkdir); err != nil && !os.IsNotExist(err) {
+		fmt.Println("failed to remove VM workdir:", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
@@ -482,6 +562,28 @@ func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) er
 	}
 
 	return applyTerraform(workdir)
+}
+
+func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cpu, memory, hdd int) {
+	jobAny, _ := jobs.Load(jobID)
+	job := jobAny.(*Job)
+
+	job.Status = "running(modify)"
+	job.VMID = vmid
+	job.LogPath = filepath.Join("/tmp", jobID+".log")
+	jobs.Store(jobID, job)
+
+	logFile, _ := os.Create(job.LogPath)
+	defer logFile.Close()
+
+	err := updateVMResources(userID, servername, vmid, cpu, memory, hdd)
+	if err != nil {
+		job.Status = "error"
+		fmt.Fprintf(logFile, "Error: %v\n", err)
+	} else {
+		job.Status = "done"
+	}
+	jobs.Store(jobID, job)
 }
 
 func updateVMHandler(w http.ResponseWriter, r *http.Request) {
@@ -511,28 +613,17 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, VMID: req.VMID})
 
-	err := updateVMResources(
-		userID,
-		req.Name,
-		req.VMID,
-		req.Cores,
-		req.Memory,
-		req.HDD,
-	)
-	if err != nil {
-		if err.Error() == "unauthorized" {
-			http.Error(w, "unauthorized", http.StatusForbidden)
-			return
-		}
-		http.Error(w, err.Error(), 500)
-		return
-	}
+	// Run VM update in background
+	go runUpdateVMJob(jobID, userID, req.VMID, req.Name, req.Cores, req.Memory, req.HDD)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "modified",
+	})
 }
 
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {

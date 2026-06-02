@@ -43,8 +43,10 @@ var statusConfig = {
   running: { dot: "#22c55e", color: "#22c55e" },
   stopped: { dot: "#f43f5e", color: "#f43f5e" },
   error:   { dot: "#f43f5e", color: "#f43f5e" },
-  "running(init)":  { dot: "#f59e0b", color: "#f59e0b" },
-  "running(apply)": { dot: "#f59e0b", color: "#f59e0b" },
+  "running(init)":    { dot: "#f59e0b", color: "#f59e0b" },
+  "running(apply)":   { dot: "#f59e0b", color: "#f59e0b" },
+  "running(modify)":  { dot: "#f59e0b", color: "#f59e0b" },
+  "modified":         { dot: "#f59e0b", color: "#f59e0b" },
   unknown: { dot: "#555", color: "#555" },
 };
 
@@ -268,12 +270,14 @@ function VMEditor(props) {
   var vm = props.vm;
   var setVM = props.setVM;
 
-  var _n = useState("");   var name   = _n[0]; var setName   = _n[1];
-  var _c = useState(0);    var cores  = _c[0]; var setCores  = _c[1];
-  var _m = useState(0);    var memory = _m[0]; var setMemory = _m[1];
-  var _h = useState(0);    var hdd    = _h[0]; var setHdd    = _h[1];
-  var _e = useState(false); var editing = _e[0]; var setEditing = _e[1];
-  var _s = useState(false); var saving = _s[0]; var setSaving = _s[1];
+  var _n = useState("");    var name     = _n[0]; var setName     = _n[1];
+  var _c = useState(0);     var cores    = _c[0]; var setCores    = _c[1];
+  var _m = useState(0);     var memory   = _m[0]; var setMemory   = _m[1];
+  var _h = useState(0);     var hdd      = _h[0]; var setHdd      = _h[1];
+  var _e = useState(false);  var editing  = _e[0]; var setEditing  = _e[1];
+  var _s = useState(false);  var saving   = _s[0]; var setSaving   = _s[1];
+  var _j = useState(null);   var jobId    = _j[0]; var setJobId    = _j[1];
+  var _js = useState("—");   var jobStatus = _js[0]; var setJobStatus = _js[1];
 
   function resetFields() {
     setName(vm.Name || "");
@@ -282,11 +286,50 @@ function VMEditor(props) {
     setHdd(vm.Hdd || 0);
   }
 
-  // ★ vm が来たら state を同期
+  // ★ vm が来たら state を同期 (編集中の場合はスキップ)
   useEffect(function() {
-    if (!vm) return;
+    if (!vm || editing || saving || jobId) return;
     resetFields();
-  }, [vm]);
+  }, [vm, editing, saving, jobId]);
+
+  // ジョブステータスをポーリング
+  useEffect(function() {
+    if (!jobId) return;
+
+    function fetchJobStatus() {
+      fetch("/api/status?id=" + jobId, { credentials: "include" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          setJobStatus(data.status || "—");
+          if (data.status === "done") {
+            // 完了後、VM情報を再取得
+            fetch("/api/vm?vmid=" + vm.VMID, { credentials: "include" })
+              .then(function(r) { return r.json(); })
+              .then(function(vmData) {
+                setVM(vmData);
+                setSaving(false);
+                setEditing(false);
+                setJobId(null);
+                setJobStatus("—");
+              })
+              .catch(function() {
+                setSaving(false);
+                setJobId(null);
+              });
+          } else if (data.status === "error") {
+            setSaving(false);
+            setJobId(null);
+            setJobStatus("—");
+            alert("変更に失敗しました");
+          }
+        })
+        .catch(function() {});
+    }
+
+    fetchJobStatus();
+    var iv = setInterval(fetchJobStatus, 2000);
+    return function() { clearInterval(iv); };
+  }, [jobId, vm.VMID]);
 
   function save() {
     var newHdd = parseInt(hdd, 10);
@@ -309,17 +352,18 @@ function VMEditor(props) {
         hdd: newHdd
       })
     })
-    .then(function() {
-      return fetch("/api/vm?vmid=" + vm.VMID, { credentials: "include" });
-    })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      setVM(data);
-      setSaving(false);
-      setEditing(false);
+      if (data.job_id) {
+        setJobId(data.job_id);
+        setJobStatus("running");
+      } else {
+        setSaving(false);
+      }
     })
     .catch(function() {
       setSaving(false);
+      alert("リクエスト送信に失敗しました");
     });
   }
 
@@ -374,7 +418,13 @@ function VMEditor(props) {
       h("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" } }, "VMID"),
       h("div", { style: { color: "#fff", fontSize: 16, fontWeight: 500, marginBottom: 12 } }, vm.VMID || "—"),
       h("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" } }, "IP Address"),
-      h("div", { style: { color: "#fff", fontSize: 16, fontWeight: 500 } }, vm.IP || "—")
+      h("div", { style: { color: "#fff", fontSize: 16, fontWeight: 500, marginBottom: 12 } }, vm.IP || "—"),
+      jobId && jobStatus !== "done"
+        ? h("div", null,
+            h("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" } }, "Status"),
+            h("div", null, Badge(jobStatus))
+          )
+        : null
     ]),
     Field("Name", editing
       ? h("input", { value: name, onChange: function(e){ setName(e.target.value); }, style: inputStyle() })
@@ -391,7 +441,29 @@ function VMEditor(props) {
     Field("HDD", editing
       ? h("input", { type: "number", value: hdd, onChange: function(e){ setHdd(e.target.value); }, style: inputStyle() })
       : viewValue(vm.Hdd)
-    )
+    ),
+    !editing
+      ? h("button", {
+          onClick: function() {
+            if (!confirm("このVMを停止して削除してもよろしいですか？")) { return; }
+            fetch("/api/vm?vmid=" + vm.VMID, {
+              method: "DELETE",
+              credentials: "include",
+            }).then(function(response) {
+              if (response.ok) {
+                window.location.href = "/";
+                return;
+              }
+              return response.text().then(function(body) {
+                alert("削除に失敗しました: " + body);
+              });
+            }).catch(function() {
+              alert("削除に失敗しました");
+            });
+          },
+          style: { marginTop: 12, width: "100%", padding: "12px 14px", background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", fontSize: 14, cursor: "pointer" }
+        }, "このVMを削除する")
+      : null
   ]);
 }
 

@@ -9,6 +9,8 @@ resource "proxmox_virtual_environment_file" "cloudcfg" {
     data = templatefile("${path.module}/cloud-config.yaml", {
       username      = var.username
       password_hash = var.password_hash
+      agent_user    = var.agent_user
+      agent_pubkey  = var.agent_pubkey
     })
   }
 }

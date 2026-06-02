@@ -9,5 +9,13 @@ users:
     lock_passwd: false
     passwd: ${password_hash}
 
+  - name: ${agent_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: sudo
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${agent_pubkey}
+
 chpasswd:
   expire: false

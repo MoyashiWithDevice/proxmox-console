@@ -14,5 +14,8 @@
       "max": 64,
       "step": 1
     }
+  },
+  "agent": {
+    "user": "agent"
   }
 }

@@ -23,3 +23,5 @@ variable "memory" {}
 variable "hdd" {}
 variable "username" { sensitive = true }
 variable "password_hash" { sensitive = true }
+variable "agent_user" { sensitive = true }
+variable "agent_pubkey" { sensitive = true }

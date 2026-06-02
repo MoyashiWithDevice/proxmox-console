@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	tfexec "github.com/hashicorp/terraform-exec/tfexec"
+	"golang.org/x/crypto/ssh"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -77,6 +80,19 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
+	agentUser := SettingsConf.Agent.User
+	if agentUser == "" {
+		agentUser = "agent"
+	}
+
+	agentPubkey := strings.TrimSpace(SettingsConf.Agent.PublicKey)
+	if agentPubkey == "" {
+		fmt.Println("Error missing agent public key in settings")
+		job.Status = "error"
+		jobs.Store(jobID, job)
+		return
+	}
+
 	tfvars := fmt.Sprintf(`
 servername    = "%s"
 cpu           = %d
@@ -84,8 +100,11 @@ memory        = %d
 hdd           = %d
 username      = "%s"
 password_hash = "%s"
+agent_user    = "%s"
+agent_pubkey  = "%s"
 `,
 		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, hash,
+		agentUser, agentPubkey,
 	)
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
@@ -586,6 +605,57 @@ func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cp
 	jobs.Store(jobID, job)
 }
 
+func sshExecuteCommand(ip, user, privateKeyPath, command string) (stdout, stderr string, exitCode int, err error) {
+	keyBytes, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return "", "", -1, fmt.Errorf("could not read private key: %w", err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(keyBytes)
+	if err != nil {
+		return "", "", -1, fmt.Errorf("could not parse private key: %w", err)
+	}
+
+	config := &ssh.ClientConfig{
+		User:            user,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         15 * time.Second,
+	}
+
+	addr := net.JoinHostPort(ip, "22")
+	client, err := ssh.Dial("tcp", addr, config)
+	if err != nil {
+		return "", "", -1, fmt.Errorf("ssh dial failed: %w", err)
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return "", "", -1, fmt.Errorf("failed to create ssh session: %w", err)
+	}
+	defer session.Close()
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	session.Stdout = &stdoutBuf
+	session.Stderr = &stderrBuf
+
+	err = session.Run(command)
+	stdout = stdoutBuf.String()
+	stderr = stderrBuf.String()
+	if err != nil {
+		if exitErr, ok := err.(*ssh.ExitError); ok {
+			exitCode = exitErr.ExitStatus()
+			err = nil
+			return stdout, stderr, exitCode, nil
+		}
+		return stdout, stderr, -1, err
+	}
+
+	exitCode = 0
+	return stdout, stderr, exitCode, nil
+}
+
 func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -629,4 +699,79 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(SettingsConf)
+}
+
+// vmExecHandler はゲストエージェントを使ってコマンドを実行し、その結果を返します
+func vmExecHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		VMID int    `json:"vmid"`
+		Cmd  string `json:"cmd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.VMID == 0 || strings.TrimSpace(req.Cmd) == "" {
+		http.Error(w, "missing vmid or cmd", http.StatusBadRequest)
+		return
+	}
+
+	// 所有者チェック
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+
+	vm, err := getVMByProxmoxID(req.VMID)
+	if err != nil {
+		http.Error(w, "vm not found", http.StatusNotFound)
+		return
+	}
+	if vm.UserID != dbUserID {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, req.VMID)
+	if err != nil {
+		http.Error(w, "failed to resolve VM IP", http.StatusInternalServerError)
+		return
+	}
+	if ip == "" {
+		http.Error(w, "VM IP address is not available yet", http.StatusInternalServerError)
+		return
+	}
+
+	agentUser := SettingsConf.Agent.User
+	if agentUser == "" {
+		agentUser = "agent"
+	}
+	privKeyPath := filepath.Join("cert", "agent_id_rsa")
+
+	stdout, stderr, exitCode, err := sshExecuteCommand(ip, agentUser, privKeyPath, req.Cmd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to execute command: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ip":        ip,
+		"stdout":    stdout,
+		"stderr":    stderr,
+		"exit_code": exitCode,
+	})
 }

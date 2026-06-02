@@ -58,6 +58,7 @@ func main() {
 	}))
 	http.HandleFunc("/api/vms", requireLogin(userVMListHandler))
 	http.HandleFunc("/api/vm", requireLogin(vmDetailHandler))
+	http.HandleFunc("/api/vm/exec", requireLogin(vmExecHandler))
 	http.HandleFunc("/api/create", requireLogin(createVMHandler))
 	http.HandleFunc("/api/update", updateVMHandler)
 	http.HandleFunc("/api/status", requireLogin(statusHandler))

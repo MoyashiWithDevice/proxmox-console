@@ -1,7 +1,7 @@
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.servername
   node_name = var.node_name
-  onboot = true
+  on_boot = true
 
   clone {
     vm_id = 9000

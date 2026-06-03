@@ -67,6 +67,7 @@ func main() {
 	http.HandleFunc("/api/jobs", requireLogin(listJobsHandler))
 	http.HandleFunc("/api/settings", settingsAPIHandler)
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
+	http.HandleFunc("/api/node/resources", requireLogin(nodeResourcesHandler))
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)

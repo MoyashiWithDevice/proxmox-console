@@ -5,9 +5,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/Telmate/proxmox-api-go/proxmox"
+	goProxmox "github.com/luthermonson/go-proxmox"
 )
 
 type ProxmoxConfig struct {
@@ -44,6 +46,33 @@ func newProxmoxClient(ctx context.Context) (*proxmox.Client, error) {
 		return nil, errors.New("missing Proxmox authentication: set PROXMOX_API_TOKEN_ID/PROXMOX_API_TOKEN_SECRET or PROXMOX_USERNAME/PROXMOX_PASSWORD")
 	}
 
+	return client, nil
+}
+
+func newGoProxmoxClient() (*goProxmox.Client, error) {
+	if AppConfig.Proxmox.APIURL == "" {
+		return nil, errors.New("missing PROXMOX_API_URL")
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: AppConfig.Proxmox.InsecureSkipVerify},
+		},
+	}
+
+	opts := []goProxmox.Option{
+		goProxmox.WithHTTPClient(httpClient),
+	}
+
+	if AppConfig.Proxmox.APITokenID != "" && AppConfig.Proxmox.APITokenSecret != "" {
+		opts = append(opts, goProxmox.WithAPIToken(AppConfig.Proxmox.APITokenID, AppConfig.Proxmox.APITokenSecret))
+	} else if AppConfig.Proxmox.Username != "" && AppConfig.Proxmox.Password != "" {
+		opts = append(opts, goProxmox.WithLogins(AppConfig.Proxmox.Username, AppConfig.Proxmox.Password))
+	} else {
+		return nil, errors.New("missing Proxmox authentication")
+	}
+
+	client := goProxmox.NewClient(AppConfig.Proxmox.APIURL, opts...)
 	return client, nil
 }
 

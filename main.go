@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"path/filepath"
+	"time"
 
 	"github.com/amoghe/go-crypt"
 	"github.com/joho/godotenv"
@@ -67,13 +68,14 @@ func main() {
 	http.HandleFunc("/api/jobs", requireLogin(listJobsHandler))
 	http.HandleFunc("/api/settings", settingsAPIHandler)
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
+	http.HandleFunc("/api/node/resources", requireLogin(nodeResourcesHandler))
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)
 	http.HandleFunc("/error", errorUIHandler)
 
 	fmt.Println("Server started")
-	log.Fatal(http.ListenAndServe(":"+PORT, nil))
+	log.Fatal(http.ListenAndServe(":"+PORT, loggingMiddleware(http.DefaultServeMux)))
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +188,30 @@ func runCmdWithLog(cmd *exec.Cmd, logFile *os.File) ([]byte, error) {
 	}
 
 	return buf.Bytes(), err
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			start := time.Now()
+			log.Printf("[API] --> %s %s", r.Method, r.URL.Path)
+			lw := &loggingResponseWriter{ResponseWriter: w, statusCode: 200}
+			next.ServeHTTP(lw, r)
+			log.Printf("[API] <-- %s %s %d %s", r.Method, r.URL.Path, lw.statusCode, time.Since(start).Round(time.Millisecond))
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lw *loggingResponseWriter) WriteHeader(code int) {
+	lw.statusCode = code
+	lw.ResponseWriter.WriteHeader(code)
 }
 
 func hashPasswordForLinux(password string) (string, error) {

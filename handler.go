@@ -409,6 +409,59 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
+	client, err := newGoProxmoxClient()
+	if err != nil {
+		http.Error(w, "failed to create proxmox client: "+err.Error(), 500)
+		return
+	}
+
+	nodes, err := client.Nodes(r.Context())
+	if err != nil {
+		http.Error(w, "failed to list nodes: "+err.Error(), 500)
+		return
+	}
+
+	if len(nodes) == 0 {
+		http.Error(w, "no nodes found", 404)
+		return
+	}
+
+	node, err := client.Node(r.Context(), nodes[0].Name)
+	if err != nil {
+		http.Error(w, "failed to get node: "+err.Error(), 500)
+		return
+	}
+
+	// バイト単位をGiBに変換
+	toGiB := func(bytes uint64) float64 {
+		return float64(bytes) / 1024 / 1024 / 1024
+	}
+
+	resp := map[string]interface{}{
+		"cpu": map[string]interface{}{
+			"used":  node.CPU,
+			"cores": node.CPUInfo.Cores,
+			"cpus":  node.CPUInfo.CPUs,
+		},
+		"memory": map[string]interface{}{
+			"used":  toGiB(node.Memory.Used),
+			"total": toGiB(node.Memory.Total),
+		},
+		"disk": map[string]interface{}{
+			"used":  toGiB(node.RootFS.Used),
+			"total": toGiB(node.RootFS.Total),
+		},
+		"swap": map[string]interface{}{
+			"used":  toGiB(node.Swap.Used),
+			"total": toGiB(node.Swap.Total),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 func atoiSafe(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i

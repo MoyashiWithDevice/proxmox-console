@@ -412,23 +412,27 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	client, err := newGoProxmoxClient()
 	if err != nil {
+		log.Printf("[node/resources] failed to create client: %v", err)
 		http.Error(w, "failed to create proxmox client: "+err.Error(), 500)
 		return
 	}
 
 	nodes, err := client.Nodes(r.Context())
 	if err != nil {
+		log.Printf("[node/resources] failed to list nodes: %v", err)
 		http.Error(w, "failed to list nodes: "+err.Error(), 500)
 		return
 	}
 
 	if len(nodes) == 0 {
+		log.Printf("[node/resources] no nodes found")
 		http.Error(w, "no nodes found", 404)
 		return
 	}
 
 	node, err := client.Node(r.Context(), nodes[0].Name)
 	if err != nil {
+		log.Printf("[node/resources] failed to get node %s: %v", nodes[0].Name, err)
 		http.Error(w, "failed to get node: "+err.Error(), 500)
 		return
 	}

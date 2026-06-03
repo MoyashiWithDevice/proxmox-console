@@ -9,6 +9,7 @@ import (
 	"fmt"
 	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"golang.org/x/crypto/ssh"
+	"log"
 	"net"
 	"net/http"
 	"os"

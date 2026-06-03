@@ -170,10 +170,13 @@ function App() {
 
     function fetchResources() {
       fetch("/api/node/resources", { credentials: "include" })
-        .then(function(r){ return r.json(); })
+        .then(function(r){
+          if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+          return r.json();
+        })
         .then(function(data){
           setResources(data);
-        }).catch(function(){});
+        }).catch(function(err){ console.error("node/resources:", err.message); });
     }
 
     fetchItems();

@@ -32,16 +32,16 @@ func newProxmoxClient(ctx context.Context) (*proxmox.Client, error) {
 		return nil, fmt.Errorf("failed to create proxmox client: %w", err)
 	}
 
-	if AppConfig.Proxmox.Username != "" && AppConfig.Proxmox.Password != "" {
-		if err := client.Login(ctx, AppConfig.Proxmox.Username, AppConfig.Proxmox.Password, ""); err != nil {
-			return nil, fmt.Errorf("failed to login to proxmox: %w", err)
-		}
-	} else if AppConfig.Proxmox.APITokenID != "" && AppConfig.Proxmox.APITokenSecret != "" {
+	if AppConfig.Proxmox.APITokenID != "" && AppConfig.Proxmox.APITokenSecret != "" {
 		var tokenID proxmox.ApiTokenID
 		if err := tokenID.Parse(AppConfig.Proxmox.APITokenID); err != nil {
 			return nil, fmt.Errorf("invalid proxmox api token id: %w", err)
 		}
 		client.SetAPIToken(tokenID, proxmox.ApiTokenSecret(AppConfig.Proxmox.APITokenSecret))
+	} else if AppConfig.Proxmox.Username != "" && AppConfig.Proxmox.Password != "" {
+		if err := client.Login(ctx, AppConfig.Proxmox.Username, AppConfig.Proxmox.Password, ""); err != nil {
+			return nil, fmt.Errorf("failed to login to proxmox: %w", err)
+		}
 	} else {
 		return nil, errors.New("missing Proxmox authentication: set PROXMOX_API_TOKEN_ID/PROXMOX_API_TOKEN_SECRET or PROXMOX_USERNAME/PROXMOX_PASSWORD")
 	}

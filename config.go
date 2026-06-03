@@ -85,17 +85,6 @@ func loadConfig() {
 	os.Setenv("TF_VAR_proxmox_username", AppConfig.Proxmox.Username)
 	os.Setenv("TF_VAR_proxmox_password", AppConfig.Proxmox.Password)
 
-	// provider直接読取用 (bpg/proxmox v0.66+)
-	os.Setenv("PROXMOX_VE_ENDPOINT", tfEndpoint)
-	if AppConfig.Proxmox.APITokenID != "" && AppConfig.Proxmox.APITokenSecret != "" {
-		apiToken := fmt.Sprintf("%s=%s", AppConfig.Proxmox.APITokenID, AppConfig.Proxmox.APITokenSecret)
-		os.Setenv("PROXMOX_VE_API_TOKEN", apiToken)
-	} else {
-		os.Setenv("PROXMOX_VE_USERNAME", AppConfig.Proxmox.Username)
-		os.Setenv("PROXMOX_VE_PASSWORD", AppConfig.Proxmox.Password)
-	}
-	os.Setenv("PROXMOX_VE_INSECURE", "true")
-
 	// Load settings from setting.json
 	loadSettingsConfig()
 	loadAgentKeys()

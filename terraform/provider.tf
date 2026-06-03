@@ -10,8 +10,8 @@ terraform {
 }
 
 provider "proxmox" {
-  # endpoint / api_token は環境変数 PROXMOX_VE_ENDPOINT / PROXMOX_VE_API_TOKEN から自動取得
+  endpoint = var.proxmox_endpoint
+  username = var.proxmox_username
+  password = var.proxmox_password
   insecure = true
 }
-
-

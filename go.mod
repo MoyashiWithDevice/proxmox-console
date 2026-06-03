@@ -3,12 +3,12 @@ module proxmox-console
 go 1.26.2
 
 require (
-	github.com/Telmate/proxmox-api-go v0.0.0-20260515213007-6e450d70bd0f
 	github.com/amoghe/go-crypt v0.0.0-20220222110647-20eada5f5964
 	github.com/hashicorp/terraform-exec v0.25.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
 	github.com/luthermonson/go-proxmox v0.7.0
+	golang.org/x/crypto v0.45.0
 )
 
 require (
@@ -22,7 +22,6 @@ require (
 	github.com/jinzhu/copier v0.3.4 // indirect
 	github.com/magefile/mage v1.14.0 // indirect
 	github.com/zclconf/go-cty v1.18.1 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 )

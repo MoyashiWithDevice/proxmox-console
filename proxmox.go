@@ -23,7 +23,7 @@ type ProxmoxConfig struct {
 
 func newProxmoxClient(ctx context.Context) (*proxmox.Client, error) {
 	if AppConfig.Proxmox.APIURL == "" {
-		return nil, errors.New("missing PROXMOX_API_URL")
+		return nil, errors.New("missing TF_VAR_proxmox_api_url")
 	}
 
 	tlsConfig := &tls.Config{InsecureSkipVerify: AppConfig.Proxmox.InsecureSkipVerify}
@@ -43,7 +43,7 @@ func newProxmoxClient(ctx context.Context) (*proxmox.Client, error) {
 			return nil, fmt.Errorf("failed to login to proxmox: %w", err)
 		}
 	} else {
-		return nil, errors.New("missing Proxmox authentication: set PROXMOX_API_TOKEN_ID/PROXMOX_API_TOKEN_SECRET or PROXMOX_USERNAME/PROXMOX_PASSWORD")
+		return nil, errors.New("missing Proxmox authentication: set TF_VAR_proxmox_api_token_id/proxmox_api_token_secret or TF_VAR_proxmox_username/proxmox_password")
 	}
 
 	return client, nil
@@ -51,7 +51,7 @@ func newProxmoxClient(ctx context.Context) (*proxmox.Client, error) {
 
 func newGoProxmoxClient() (*goProxmox.Client, error) {
 	if AppConfig.Proxmox.APIURL == "" {
-		return nil, errors.New("missing PROXMOX_API_URL")
+		return nil, errors.New("missing TF_VAR_proxmox_api_url")
 	}
 
 	httpClient := &http.Client{

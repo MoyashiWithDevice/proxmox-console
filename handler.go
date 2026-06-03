@@ -414,6 +414,12 @@ func atoiSafe(s string) int {
 	return i
 }
 
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
 func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
 	path := filepath.Join(workdir, "runtime.tfvars")
 
@@ -719,39 +725,39 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		Cmd  string `json:"cmd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	if req.VMID == 0 || strings.TrimSpace(req.Cmd) == "" {
-		http.Error(w, "missing vmid or cmd", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "missing vmid or cmd")
 		return
 	}
 
 	// 所有者チェック
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
-		http.Error(w, "internal", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "internal")
 		return
 	}
 
 	vm, err := getVMByProxmoxID(req.VMID)
 	if err != nil {
-		http.Error(w, "vm not found", http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "vm not found")
 		return
 	}
 	if vm.UserID != dbUserID {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, req.VMID)
 	if err != nil {
-		http.Error(w, "failed to resolve VM IP", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "failed to resolve VM IP")
 		return
 	}
 	if ip == "" {
-		http.Error(w, "VM IP address is not available yet", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "VM IP address is not available yet")
 		return
 	}
 
@@ -763,7 +769,7 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 
 	stdout, stderr, exitCode, err := sshExecuteCommand(ip, agentUser, privKeyPath, req.Cmd)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to execute command: %v", err), http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to execute command: %v", err))
 		return
 	}
 

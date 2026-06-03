@@ -543,6 +543,12 @@ function TerminalTab(props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vmid: vm.VMID, cmd: cmd })
     }).then(function(r){
+      var contentType = (r.headers.get('content-type') || '').toLowerCase();
+      if (contentType.indexOf('application/json') === -1) {
+        return r.text().then(function(text) {
+          throw new Error('Unexpected server response: ' + text);
+        });
+      }
       return r.json();
     }).then(function(data){
       // handle different response shapes from backend

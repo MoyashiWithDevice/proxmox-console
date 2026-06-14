@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	tfexec "github.com/hashicorp/terraform-exec/tfexec"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 	"log"
 	"net/http"
@@ -17,6 +18,12 @@ import (
 	"time"
 	"io"
 )
+
+var wsUpgrader = websocket.Upgrader{
+	HandshakeTimeout: 10 * time.Second,
+	// 必要に応じてOriginを検証してください
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 
@@ -901,25 +908,11 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := w.(http.Flusher)
-	if !ok {
-		log.Println("Flusher unsupported")
-		http.Error(w, "streaming unsupported", 500)
-		return
+	modes := ssh.TerminalModes{
+		ssh.ECHO: 1,
 	}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	stdout, err := session.StdoutPipe()
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	stderr, err := session.StderrPipe()
+	err = session.RequestPty("xterm-256color", 80, 40, modes)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -927,22 +920,207 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 
 	fw := flushWriter{w}
 
-	err = session.Start(req.Cmd)
+	session.Stdout = fw
+	session.Stderr = fw
+
+	stdin, err := session.StdinPipe()
+	if err != nil{
+		http.Error(w,err.Error(), 500)
+		return
+	}
+
+	err = session.Shell()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-
-	go io.Copy(fw, stdout)
-	go io.Copy(fw, stderr)
+	session.Run("bash --noprofile --norc")
+	go func(){
+		defer stdin.Close()
+	}()
 
 	err = session.Wait()
+}
 
+func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
+ 
+	// ── 認証 ──────────────────────────────────────────────────────────────
+	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
-		log.Printf("Wait: %v", err)
-	} else {
-		log.Println("Wait OK")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
+ 
+	// ── パラメータ取得 ────────────────────────────────────────────────────
+	vmidStr := r.URL.Query().Get("vmid")
+	if vmidStr == "" {
+		http.Error(w, "missing vmid", http.StatusBadRequest)
+		return
+	}
+	var vmid int
+	if _, err := fmt.Sscan(vmidStr, &vmid); err != nil || vmid == 0 {
+		http.Error(w, "invalid vmid", http.StatusBadRequest)
+		return
+	}
+ 
+	// ── 所有者チェック ────────────────────────────────────────────────────
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	vm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		http.Error(w, "vm not found", http.StatusNotFound)
+		return
+	}
+	if vm.UserID != dbUserID {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+ 
+	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
+	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, vmid)
+	if err != nil || ip == "" {
+		http.Error(w, "VM IP not available", http.StatusInternalServerError)
+		return
+	}
+ 
+	// ── SSH接続 ───────────────────────────────────────────────────────────
+	agentUser := SettingsConf.Agent.User
+	if agentUser == "" {
+		agentUser = "agent"
+	}
+	privKeyPath := filepath.Join("cert", "agent_id_rsa")
+ 
+	sshClient, err := createSSHClient(ip, agentUser, privKeyPath)
+	if err != nil {
+		log.Printf("createSSHClient: %v", err)
+		http.Error(w, "ssh connection failed", http.StatusInternalServerError)
+		return
+	}
+	defer sshClient.Close()
+ 
+	session, err := sshClient.NewSession()
+	if err != nil {
+		log.Printf("NewSession: %v", err)
+		http.Error(w, "ssh session failed", http.StatusInternalServerError)
+		return
+	}
+	defer session.Close()
+ 
+	// ── PTY設定 ───────────────────────────────────────────────────────────
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+	if err := session.RequestPty("xterm-256color", 40, 80, modes); err != nil {
+		log.Printf("RequestPty: %v", err)
+		http.Error(w, "pty request failed", http.StatusInternalServerError)
+		return
+	}
+ 
+	// ── stdin/stdout/stderr パイプ ─────────────────────────────────────────
+	sshIn, err := session.StdinPipe()
+	if err != nil {
+		http.Error(w, "stdin pipe failed", http.StatusInternalServerError)
+		return
+	}
+	sshOut, err := session.StdoutPipe()
+	if err != nil {
+		http.Error(w, "stdout pipe failed", http.StatusInternalServerError)
+		return
+	}
+	sshErr, err := session.StderrPipe()
+	if err != nil {
+		http.Error(w, "stderr pipe failed", http.StatusInternalServerError)
+		return
+	}
+ 
+	// ── シェル起動 ────────────────────────────────────────────────────────
+	// Shell()を呼ぶだけでインタラクティブシェルが開始される。
+	// Run()やWait()は呼ばない（WebSocketが切れるまで維持するため）。
+	if err := session.Shell(); err != nil {
+		log.Printf("Shell: %v", err)
+		http.Error(w, "shell start failed", http.StatusInternalServerError)
+		return
+	}
+ 
+	// ── WebSocketアップグレード ───────────────────────────────────────────
+	// SSH確立後にアップグレードすることで、失敗時にHTTPエラーを返せる
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade: %v", err)
+		return
+	}
+	defer conn.Close()
+ 
+	done := make(chan struct{})
+ 
+	// SSH stdout → WebSocket (BinaryMessage)
+	go func() {
+		defer close(done)
+		buf := make([]byte, 4096)
+		for {
+			n, err := sshOut.Read(buf)
+			if n > 0 {
+				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+					return
+				}
+			}
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("sshOut read: %v", err)
+				}
+				return
+			}
+		}
+	}()
+ 
+	// SSH stderr → WebSocket (BinaryMessage)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := sshErr.Read(buf)
+			if n > 0 {
+				conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+ 
+	// WebSocket → SSH stdin
+	// テキストメッセージ: {"type":"resize","cols":N,"rows":N} でウィンドウリサイズ
+	// バイナリメッセージ: キー入力をそのままstdinへ
+	go func() {
+		for {
+			mt, data, err := conn.ReadMessage()
+			if err != nil {
+				session.Close()
+				return
+			}
+			if mt == websocket.TextMessage {
+				var msg struct {
+					Type string `json:"type"`
+					Cols uint32 `json:"cols"`
+					Rows uint32 `json:"rows"`
+				}
+				if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
+					_ = session.WindowChange(int(msg.Rows), int(msg.Cols))
+					continue
+				}
+			}
+			if _, err := sshIn.Write(data); err != nil {
+				return
+			}
+		}
+	}()
+ 
+	// stdoutが閉じるまで（セッション終了まで）待つ
+	<-done
 }
 
 // startVMHandler は VM を起動します

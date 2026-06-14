@@ -60,6 +60,7 @@ func main() {
 	http.HandleFunc("/api/vm", requireLogin(vmDetailHandler))
 	http.HandleFunc("/api/vm/key", requireLogin(vmPrivateKeyHandler))
 	http.HandleFunc("/api/vm/exec", requireLogin(vmExecHandler))
+	http.HandleFunc("/api/vm/terminal", vmTerminalHandler)
 	http.HandleFunc("/api/vm/start", requireLogin(startVMHandler))
 	http.HandleFunc("/api/vm/stop", requireLogin(stopVMHandler))
 	http.HandleFunc("/api/create", requireLogin(createVMHandler))

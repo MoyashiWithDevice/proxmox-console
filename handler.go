@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"io"
 )
 
 func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
@@ -806,6 +807,8 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
 	json.NewEncoder(w).Encode(SettingsConf)
 }
 
@@ -890,7 +893,6 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	log.Println("createSSHClient OK")
 
 	session, err := client.NewSession()
 	if err != nil {
@@ -898,7 +900,6 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	log.Println("NewSession OK")
 
 	_, ok := w.(http.Flusher)
 	if !ok {
@@ -906,25 +907,34 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", 500)
 		return
 	}
-	log.Println("Flusher OK")
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
-	fw := flushWriter{w}
-
-	session.Stdout = fw
-	session.Stderr = fw
-
-	log.Println("before Start")
-
-	err = session.Start(req.Cmd)
+	stdout, err := session.StdoutPipe()
 	if err != nil {
-		log.Printf("Start: %v", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	log.Println("Start OK")
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	fw := flushWriter{w}
+
+	err = session.Start(req.Cmd)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	go io.Copy(fw, stdout)
+	go io.Copy(fw, stderr)
 
 	err = session.Wait()
 

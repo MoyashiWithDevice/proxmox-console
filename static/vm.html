@@ -385,7 +385,6 @@ function VMEditor(props) {
   var _s = useState(false);  var saving   = _s[0]; var setSaving   = _s[1];
   var _j = useState(null);   var jobId    = _j[0]; var setJobId    = _j[1];
   var _js = useState("—");   var jobStatus = _js[0]; var setJobStatus = _js[1];
-  var _tab = useState('details'); var tab = _tab[0]; var setTab = _tab[1];
 
   function resetFields() {
     setName(vm.Name || "");
@@ -530,14 +529,38 @@ function VMEditor(props) {
   }
 
   return h("div", { style: { background: "#111", border: "1px solid #1a1a1a", borderRadius: 8, padding: 24, maxWidth: 720 } }, [
-    // Tabs
-    h('div', { style: { display: 'flex', gap: 8, marginBottom: 12 } }, [
-      h('button', { onClick: function(){ setTab('details'); }, style: { padding: '8px 12px', borderRadius: 6, border: tab === 'details' ? '1px solid #2563eb' : '1px solid #222', background: tab === 'details' ? '#0b1220' : 'transparent', color: '#fff' } }, 'Details'),
-      h('button', { onClick: function(){ setTab('terminal'); }, style: { padding: '8px 12px', borderRadius: 6, border: tab === 'terminal' ? '1px solid #2563eb' : '1px solid #222', background: tab === 'terminal' ? '#0b1220' : 'transparent', color: '#fff' } }, 'Terminal')
+    h('div', {
+      style: {
+        display: 'flex',
+        gap: 8,
+        marginBottom: 12
+      }
+    }, [
+
+      h('button', {
+        onClick: function() {
+          window.open(
+            '/terminal.html?vmid=' + vm.VMID,
+            '_blank',
+            'noopener,noreferrer'
+          );
+        },
+
+        style: {
+          padding: '8px 12px',
+          borderRadius: 6,
+          border: '1px solid #2563eb',
+          background: '#0b1220',
+          color: '#fff',
+          cursor: 'pointer'
+        }
+
+      }, 'Open Terminal')
+
     ]),
 
     // Details container (hidden when terminal tab active)
-    h('div', { style: { display: tab === 'details' ? 'block' : 'none' } }, [
+    h('div', null, [
       h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } }, [
         h("div", { style: { fontSize: 16, fontWeight: 600 } }, "VM Details"),
         editing
@@ -660,159 +683,7 @@ function VMEditor(props) {
             style: { marginTop: 12, width: "100%", padding: "12px 14px", background: "#dc2626", border: "none", borderRadius: 8, color: "#fff", fontSize: 14, cursor: "pointer" }
           }, "このVMを削除する")
         : null
-    ]),
-
-    // Terminal container (hidden when details tab active)
-    h('div', { style: { display: tab === 'terminal' ? 'block' : 'none' } }, [
-      h(TerminalTab, { vm: vm })
     ])
-  ]);
-
-}
-
-// Terminal component: simple command executor using guest agent
-function TerminalTab(props) {
-  var vm = props.vm;
-  var _out = useState(""); var output = _out[0]; var setOutput = _out[1];
-  var _cmd = useState(""); var cmd = _cmd[0]; var setCmd = _cmd[1];
-  var _busy = useState(false); var busy = _busy[0]; var setBusy = _busy[1];
-
-  function appendLine(line) {
-    setOutput(function(prev) { return prev + line + "\n"; });
-  }
-
-  async function run() {
-    if (!cmd || busy) return;
-
-    setBusy(true);
-    appendLine("$ " + cmd);
-
-    try {
-      const response = await fetch("/api/vm/exec", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          vmid: vm.VMID,
-          cmd: cmd
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      if (!response.body) {
-        throw new Error("Streaming not supported");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { value, done } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        const chunk = decoder.decode(value, {
-          stream: true
-        });
-
-        setOutput(function(prev) {
-          return prev + chunk;
-        });
-      }
-
-    } catch (e) {
-      appendLine("Error: " + e.message);
-    } finally {
-      setBusy(false);
-      setCmd("");
-    }
-  }
-
-  return h('div', { style: { marginTop: 16 } }, [
-    h('div', {
-      style: {
-        fontSize: 11,
-        color: '#9ca3af',
-        marginBottom: 6
-      }
-    }, 'Terminal'),
-
-    h('div', {
-      style: {
-        background: '#000',
-        color: '#ddd',
-        border: '1px solid #222',
-        borderRadius: 6,
-        padding: 12,
-        height: 240,
-        overflowY: 'auto',
-        overflowX: 'auto',
-        fontFamily: 'monospace',
-        whiteSpace: 'pre-wrap'
-      }
-    },
-      output ||
-      (vm && vm.IP
-        ? '準備完了。コマンドを入力して実行してください'
-        : 'VMにIPがありません。作成中またはネットワーク未設定です')
-    ),
-
-    h('div', {
-      style: {
-        display: 'flex',
-        gap: 8,
-        marginTop: 8
-      }
-    }, [
-
-      h('input', {
-        value: cmd,
-        placeholder: 'コマンドを入力して Enter で送信',
-
-        onChange: function(e) {
-          setCmd(e.target.value);
-        },
-
-        onKeyDown: function(e) {
-          if (e.key === 'Enter') {
-            run();
-          }
-        },
-
-        style: {
-          flex: 1,
-          padding: '8px 10px',
-          borderRadius: 6,
-          border: '1px solid #222',
-          background: '#0d0d0d',
-          color: '#fff'
-        }
-      }),
-
-      h('button', {
-        onClick: run,
-        disabled: busy,
-
-        style: {
-          padding: '8px 12px',
-          borderRadius: 6,
-          background: '#2563eb',
-          color: '#fff',
-          border: 'none',
-          cursor: busy ? 'default' : 'pointer'
-        }
-
-      }, busy ? '実行中...' : '実行')
-
-    ])
-
   ]);
 }
 

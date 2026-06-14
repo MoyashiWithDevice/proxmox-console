@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Terminal</title>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<style>
+body{
+    margin:0;
+    background:#000;
+    color:#fff;
+    font-family:monospace;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+
+var h = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
+var useRef = React.useRef;
+
+function App(){
+
+    var params = new URLSearchParams(location.search);
+    var vmid = params.get("vmid");
+
+    var _out = useState("");
+    var output = _out[0];
+    var setOutput = _out[1];
+
+    var _cmd = useState("");
+    var cmd = _cmd[0];
+    var setCmd = _cmd[1];
+
+    var _busy = useState(false);
+    var busy = _busy[0];
+    var setBusy = _busy[1];
+
+    var boxRef = useRef(null);
+    useEffect(function(){
+        if(boxRef.current){
+            boxRef.current.scrollTop =
+                boxRef.current.scrollHeight;
+        }
+    }, [output]);
+
+    async function run(){
+
+        if(!cmd || busy){
+            return;
+        }
+
+        setBusy(true);
+
+        setOutput(function(prev){
+            return prev + "$ " + cmd + "\n";
+        });
+
+        try{
+
+            var response = await fetch(
+                "/api/vm/exec",
+                {
+                    method:"POST",
+                    credentials:"include",
+                    headers:{
+                        "Content-Type":"application/json"
+                    },
+                    body: JSON.stringify({
+                        vmid: parseInt(vmid,10),
+                        cmd: cmd
+                    })
+                }
+            );
+
+            if(!response.ok){
+                throw new Error(await response.text());
+            }
+
+            if(!response.body){
+                throw new Error("stream unsupported");
+            }
+
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+
+            while(true){
+
+                var result = await reader.read();
+
+                if(result.done){
+                    break;
+                }
+
+                var chunk = decoder.decode(
+                    result.value,
+                    { stream:true }
+                );
+
+                setOutput(function(prev){
+                    return prev + chunk;
+                });
+            }
+
+        }
+        catch(e){
+
+            setOutput(function(prev){
+                return prev +
+                    "Error: " +
+                    e.message +
+                    "\n";
+            });
+
+        }
+
+        setCmd("");
+        setBusy(false);
+    }
+
+    return h("div", {
+        style:{
+            padding:20
+        }
+    }, [
+
+        h("div", {
+            ref:boxRef,
+            style:{
+                height:"80vh",
+                overflowY:"auto",
+                background:"#000",
+                border:"1px solid #222",
+                padding:12,
+                whiteSpace:"pre-wrap"
+            }
+        }, output),
+
+        h("div", {
+            style:{
+                marginTop:10,
+                display:"flex",
+                gap:8
+            }
+        }, [
+
+            h("input", {
+
+                value:cmd,
+
+                onChange:function(e){
+                    setCmd(e.target.value);
+                },
+
+                onKeyDown:function(e){
+                    if(e.key === "Enter"){
+                        run();
+                    }
+                },
+
+                style:{
+                    flex:1,
+                    background:"#111",
+                    color:"#fff",
+                    border:"1px solid #333",
+                    padding:10
+                }
+
+            }),
+
+            h("button", {
+
+                onClick:run,
+
+                disabled:busy,
+
+                style:{
+                    padding:"10px 20px"
+                }
+
+            }, busy ? "実行中..." : "実行")
+
+        ])
+
+    ]);
+}
+
+ReactDOM
+.createRoot(document.getElementById("root"))
+.render(h(App));
+
+</script>
+</body>
+</html>

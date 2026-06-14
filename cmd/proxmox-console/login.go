@@ -1,9 +1,9 @@
 package main
 
 import (
-    "encoding/json"
-    "net/http"
-    "strings"
+	"encoding/json"
+	"net/http"
+	"strings"
 )
 
 func requireLogin(next http.HandlerFunc) http.HandlerFunc {

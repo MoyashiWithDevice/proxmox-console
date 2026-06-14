@@ -11,4 +11,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "go mod tidy && go run ."]
+CMD ["sh", "-c", "go mod tidy && go run ./cmd/proxmox-console"]

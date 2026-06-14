@@ -681,58 +681,138 @@ function TerminalTab(props) {
     setOutput(function(prev) { return prev + line + "\n"; });
   }
 
-  function run() {
+  async function run() {
     if (!cmd || busy) return;
+
     setBusy(true);
     appendLine("$ " + cmd);
-    fetch('/api/vm/exec', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vmid: vm.VMID, cmd: cmd })
-    }).then(function(r){
-      var contentType = (r.headers.get('content-type') || '').toLowerCase();
-      if (contentType.indexOf('application/json') === -1) {
-        return r.text().then(function(text) {
-          throw new Error('Unexpected server response: ' + text);
+
+    try {
+      const response = await fetch("/api/vm/exec", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          vmid: vm.VMID,
+          cmd: cmd
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      if (!response.body) {
+        throw new Error("Streaming not supported");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, {
+          stream: true
+        });
+
+        setOutput(function(prev) {
+          return prev + chunk;
         });
       }
-      return r.json();
-    }).then(function(data){
-      // handle different response shapes from backend
-      if (data.error) {
-        appendLine('Error: ' + data.error);
-        return;
-      }
-      if (data.stdout) {
-        appendLine(String(data.stdout));
-      }
-      if (data.stderr) {
-        // show stderr lines with prefix
-        var lines = String(data.stderr).split('\n');
-        lines.forEach(function(l){ if (l.length) appendLine('ERR: ' + l); });
-      }
-      if (!data.stdout && !data.stderr) {
-        if (typeof data.exit_code !== 'undefined') {
-          appendLine('Exit code: ' + String(data.exit_code));
-        } else if (data.ip) {
-          appendLine('コマンドは送信されましたが、出力はありません');
-        } else {
-          appendLine(JSON.stringify(data));
-        }
-      }
-    }).catch(function(e){
-      appendLine('Error: ' + e.message);
-    }).finally(function(){ setBusy(false); setCmd(''); });
+
+    } catch (e) {
+      appendLine("Error: " + e.message);
+    } finally {
+      setBusy(false);
+      setCmd("");
+    }
   }
 
   return h('div', { style: { marginTop: 16 } }, [
-    h('div', { style: { fontSize: 11, color: '#9ca3af', marginBottom: 6 } }, 'Terminal'),
-    h('div', { style: { background: '#000', color: '#ddd', border: '1px solid #222', borderRadius: 6, padding: 12, height: 240, overflowY: 'auto', fontFamily: 'monospace', whiteSpace: 'pre-wrap' } }, output || (vm && vm.IP ? '準備完了。コマンドを入力して実行してください' : 'VMにIPがありません。作成中またはネットワーク未設定です')),
-    h('div', { style: { display: 'flex', gap: 8, marginTop: 8 } }, [
-      h('input', { value: cmd, placeholder: 'コマンドを入力して Enter で送信', onChange: function(e){ setCmd(e.target.value); }, onKeyDown: function(e){ if (e.key === 'Enter') { run(); } }, style: { flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #222', background: '#0d0d0d', color: '#fff' } }),
-      h('button', { onClick: run, disabled: busy, style: { padding: '8px 12px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none' } }, busy ? '実行中...' : '実行')
+    h('div', {
+      style: {
+        fontSize: 11,
+        color: '#9ca3af',
+        marginBottom: 6
+      }
+    }, 'Terminal'),
+
+    h('div', {
+      style: {
+        background: '#000',
+        color: '#ddd',
+        border: '1px solid #222',
+        borderRadius: 6,
+        padding: 12,
+        height: 240,
+        overflowY: 'auto',
+        overflowX: 'auto',
+        fontFamily: 'monospace',
+        whiteSpace: 'pre-wrap'
+      }
+    },
+      output ||
+      (vm && vm.IP
+        ? '準備完了。コマンドを入力して実行してください'
+        : 'VMにIPがありません。作成中またはネットワーク未設定です')
+    ),
+
+    h('div', {
+      style: {
+        display: 'flex',
+        gap: 8,
+        marginTop: 8
+      }
+    }, [
+
+      h('input', {
+        value: cmd,
+        placeholder: 'コマンドを入力して Enter で送信',
+
+        onChange: function(e) {
+          setCmd(e.target.value);
+        },
+
+        onKeyDown: function(e) {
+          if (e.key === 'Enter') {
+            run();
+          }
+        },
+
+        style: {
+          flex: 1,
+          padding: '8px 10px',
+          borderRadius: 6,
+          border: '1px solid #222',
+          background: '#0d0d0d',
+          color: '#fff'
+        }
+      }),
+
+      h('button', {
+        onClick: run,
+        disabled: busy,
+
+        style: {
+          padding: '8px 12px',
+          borderRadius: 6,
+          background: '#2563eb',
+          color: '#fff',
+          border: 'none',
+          cursor: busy ? 'default' : 'pointer'
+        }
+
+      }, busy ? '実行中...' : '実行')
+
     ])
+
   ]);
 }
 

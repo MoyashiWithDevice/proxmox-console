@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"golang.org/x/crypto/ssh"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -743,55 +741,27 @@ func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cp
 	jobs.Store(jobID, job)
 }
 
-func sshExecuteCommand(ip, user, privateKeyPath, command string) (stdout, stderr string, exitCode int, err error) {
-	keyBytes, err := os.ReadFile(privateKeyPath)
+func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
+	key, err := os.ReadFile(keyPath)
 	if err != nil {
-		return "", "", -1, fmt.Errorf("could not read private key: %w", err)
+		return nil, err
 	}
 
-	signer, err := ssh.ParsePrivateKey(keyBytes)
+	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return "", "", -1, fmt.Errorf("could not parse private key: %w", err)
+		return nil, err
 	}
 
 	config := &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         15 * time.Second,
+		Timeout: 10 * time.Second,
 	}
 
-	addr := net.JoinHostPort(ip, "22")
-	client, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		return "", "", -1, fmt.Errorf("ssh dial failed: %w", err)
-	}
-	defer client.Close()
-
-	session, err := client.NewSession()
-	if err != nil {
-		return "", "", -1, fmt.Errorf("failed to create ssh session: %w", err)
-	}
-	defer session.Close()
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	session.Stdout = &stdoutBuf
-	session.Stderr = &stderrBuf
-
-	err = session.Run(command)
-	stdout = stdoutBuf.String()
-	stderr = stderrBuf.String()
-	if err != nil {
-		if exitErr, ok := err.(*ssh.ExitError); ok {
-			exitCode = exitErr.ExitStatus()
-			err = nil
-			return stdout, stderr, exitCode, nil
-		}
-		return stdout, stderr, -1, err
-	}
-
-	exitCode = 0
-	return stdout, stderr, exitCode, nil
+	return ssh.Dial("tcp", ip+":22", config)
 }
 
 func updateVMHandler(w http.ResponseWriter, r *http.Request) {
@@ -837,6 +807,20 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(SettingsConf)
+}
+
+type flushWriter struct {
+	w http.ResponseWriter
+}
+
+func (fw flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+
+	if f, ok := fw.w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	return n, err
 }
 
 // vmExecHandler はゲストエージェントを使ってコマンドを実行し、その結果を返します
@@ -897,21 +881,58 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 	if agentUser == "" {
 		agentUser = "agent"
 	}
+
 	privKeyPath := filepath.Join("cert", "agent_id_rsa")
 
-	stdout, stderr, exitCode, err := sshExecuteCommand(ip, agentUser, privKeyPath, req.Cmd)
+	client, err := createSSHClient(ip, agentUser, privKeyPath)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to execute command: %v", err))
+		log.Printf("createSSHClient: %v", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	log.Println("createSSHClient OK")
+
+	session, err := client.NewSession()
+	if err != nil {
+		log.Printf("NewSession: %v", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	log.Println("NewSession OK")
+
+	_, ok := w.(http.Flusher)
+	if !ok {
+		log.Println("Flusher unsupported")
+		http.Error(w, "streaming unsupported", 500)
+		return
+	}
+	log.Println("Flusher OK")
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	fw := flushWriter{w}
+
+	session.Stdout = fw
+	session.Stderr = fw
+
+	log.Println("before Start")
+
+	err = session.Start(req.Cmd)
+	if err != nil {
+		log.Printf("Start: %v", err)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ip":        ip,
-		"stdout":    stdout,
-		"stderr":    stderr,
-		"exit_code": exitCode,
-	})
+	log.Println("Start OK")
+
+	err = session.Wait()
+
+	if err != nil {
+		log.Printf("Wait: %v", err)
+	} else {
+		log.Println("Wait OK")
+	}
 }
 
 // startVMHandler は VM を起動します

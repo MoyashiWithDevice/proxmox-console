@@ -331,6 +331,36 @@ function VMEditor(props) {
     return function() { clearInterval(iv); };
   }, [jobId, vm.VMID]);
 
+  function downloadPrivateKey() {
+    if (!vm || !vm.VMID) {
+      alert("VMIDがありません");
+      return;
+    }
+
+    fetch("/api/vm/key?vmid=" + vm.VMID, { credentials: "include" })
+      .then(function(res) {
+        if (!res.ok) {
+          return res.text().then(function(text) {
+            throw new Error(text || "ダウンロードに失敗しました");
+          });
+        }
+        return res.blob();
+      })
+      .then(function(blob) {
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "vm-" + vm.VMID + "-id_rsa";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(function(err) {
+        alert("鍵のダウンロードに失敗しました: " + err.message);
+      });
+  }
+
   function save() {
     var newHdd = parseInt(hdd, 10);
 
@@ -422,6 +452,17 @@ function VMEditor(props) {
                 onClick: function() { setEditing(true); },
                 style: { padding: "8px 14px", background: "#111", border: "1px solid #444", borderRadius: 6, color: "#fff", cursor: "pointer" }
               }, "Edit"),
+              h("button", {
+                onClick: downloadPrivateKey,
+                style: {
+                  padding: "8px 14px",
+                  background: "#111",
+                  border: "1px solid #444",
+                  borderRadius: 6,
+                  color: "#fff",
+                  cursor: "pointer"
+                }
+              }, "Download Key"),
               h("button", {
                 onClick: function(e) {
                   e.stopPropagation();

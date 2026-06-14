@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,7 +14,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/amoghe/go-crypt"
 	"github.com/joho/godotenv"
 )
 
@@ -59,6 +56,7 @@ func main() {
 	}))
 	http.HandleFunc("/api/vms", requireLogin(userVMListHandler))
 	http.HandleFunc("/api/vm", requireLogin(vmDetailHandler))
+	http.HandleFunc("/api/vm/key", requireLogin(vmPrivateKeyHandler))
 	http.HandleFunc("/api/vm/exec", requireLogin(vmExecHandler))
 	http.HandleFunc("/api/vm/start", requireLogin(startVMHandler))
 	http.HandleFunc("/api/vm/stop", requireLogin(stopVMHandler))
@@ -212,25 +210,4 @@ type loggingResponseWriter struct {
 func (lw *loggingResponseWriter) WriteHeader(code int) {
 	lw.statusCode = code
 	lw.ResponseWriter.WriteHeader(code)
-}
-
-func hashPasswordForLinux(password string) (string, error) {
-	// ランダムsalt生成（16byte）
-	saltBytes := make([]byte, 16)
-	_, err := rand.Read(saltBytes)
-	if err != nil {
-		fmt.Println("Error generating salt:", err)
-		return "", err
-	}
-
-	salt := base64.RawStdEncoding.EncodeToString(saltBytes)
-
-	// $6$ = SHA-512 crypt
-	hash, err := crypt.Crypt(password, "$6$"+salt)
-	if err != nil {
-		fmt.Println("Error hashing password:", err)
-		return "", err
-	}
-
-	return hash, nil
 }

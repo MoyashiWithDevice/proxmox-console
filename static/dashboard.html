@@ -87,7 +87,7 @@ var useEffect = React.useEffect;
 function App() {
   var _i = useState([]); var items = _i[0]; var setItems = _i[1];
   var _h = useState(null); var hovered = _h[0]; var setHovered = _h[1];
-  var _r = useState({ cpu:{used:0,cores:0,cpus:0}, memory:{used:0,total:0}, disk:{used:0,total:0}, swap:{used:0,total:0} });
+  var _r = useState({ cpu:{used:0,cores:0}, memory:{used:0,total:0}, disk:{used:0,total:0} });
   var resources = _r[0]; var setResources = _r[1];
 
   function jobStatusColor(status) {
@@ -360,10 +360,9 @@ function App() {
 
       /* Stat cards */
       h("div", { style: { display: "flex", gap: 0, border: "1px solid #111", flexWrap: "wrap" } },
-        StatCard("cpu", "CPU", Math.round(resources.cpu.used * 100), 100, "%"),
+        StatCard("cpu", "CPU", resources.cpu.used * 100, 100, "%"),
         StatCard("memoryStick", "Memory", resources.memory.used, resources.memory.total, "GiB"),
         StatCard("hardDrive", "Disk", resources.disk.used, resources.disk.total, "GiB"),
-        StatCard("layers", "Swap", resources.swap.used, resources.swap.total, "GiB")
       ),
 
       /* Meta info */

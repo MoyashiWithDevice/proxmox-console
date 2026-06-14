@@ -73,9 +73,9 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
 
-	hash, err := hashPasswordForLinux(req.Password)
+	userPrivkey, userPubkey, err := generateSSHKeyPair()
 	if err != nil {
-		fmt.Println("Error hashing password:", err)
+		fmt.Println("Error creating key:", err)
 		job.Status = "error"
 		jobs.Store(jobID, job)
 		return
@@ -100,11 +100,15 @@ cpu           = %d
 memory        = %d
 hdd           = %d
 username      = "%s"
-password_hash = "%s"
+user_pubkey   =<<EOT
+%s
+EOT
 agent_user    = "%s"
-agent_pubkey  = "%s"
+agent_pubkey  =<<EOT
+%s
+EOT
 `,
-		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, hash,
+		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, userPubkey,
 		agentUser, agentPubkey,
 	)
 
@@ -166,6 +170,12 @@ agent_pubkey  = "%s"
 		job.Status = "error"
 		jobs.Store(jobID, job)
 		return
+	}
+
+	// VM の秘密鍵を一時的にワークディレクトリに保存
+	userKeyPath := filepath.Join(workdir, "user_id_rsa")
+	if err := os.WriteFile(userKeyPath, userPrivkey, 0600); err != nil {
+		fmt.Println("Warning: failed to write user private key:", err)
 	}
 
 	job.VMID = vmID
@@ -266,7 +276,6 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		HDD:        atoiSafe(r.FormValue("hdd")),
 		Servername: r.FormValue("servername"),
 		Username:   r.FormValue("username"),
-		Password:   r.FormValue("password"),
 	}
 
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
@@ -404,10 +413,85 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if job.VMID != 0 {
 		resp["vmid"] = job.VMID
+		if _, err := os.Stat(filepath.Join(job.Workdir, "user_id_rsa")); err == nil {
+			resp["key_available"] = true
+		} else {
+			resp["key_available"] = false
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vmidStr := r.URL.Query().Get("vmid")
+	if vmidStr == "" {
+		http.Error(w, "missing vmid", http.StatusBadRequest)
+		return
+	}
+
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
+		http.Error(w, "invalid vmid", http.StatusBadRequest)
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "vm not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if vm.UserID != dbUserID {
+		http.Error(w, "unauthorized", http.StatusForbidden)
+		return
+	}
+
+	keyPath := filepath.Join(vm.TFWorkdir, "user_id_rsa")
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "key not available", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"vm-%d-id_rsa\"", vmid))
+	w.Header().Set("Cache-Control", "no-store")
+
+	if _, err := w.Write(keyBytes); err != nil {
+		fmt.Println("Error writing private key response:", err)
+		return
+	}
+
+	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+		fmt.Println("Warning: failed to remove user private key after download:", err)
+	}
 }
 
 func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
@@ -431,12 +515,7 @@ func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node, err := client.Node(r.Context(), nodes[0].Name)
-	if err != nil {
-		log.Printf("[node/resources] failed to get node %s: %v", nodes[0].Name, err)
-		http.Error(w, "failed to get node: "+err.Error(), 500)
-		return
-	}
+	node := nodes[0]
 
 	// バイト単位をGiBに変換
 	toGiB := func(bytes uint64) float64 {
@@ -446,20 +525,15 @@ func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"cpu": map[string]interface{}{
 			"used":  node.CPU,
-			"cores": node.CPUInfo.Cores,
-			"cpus":  node.CPUInfo.CPUs,
+			"cores": node.MaxCPU,
 		},
 		"memory": map[string]interface{}{
-			"used":  toGiB(node.Memory.Used),
-			"total": toGiB(node.Memory.Total),
+			"used":  toGiB(node.Mem),
+			"total": toGiB(node.MaxMem),
 		},
 		"disk": map[string]interface{}{
-			"used":  toGiB(node.RootFS.Used),
-			"total": toGiB(node.RootFS.Total),
-		},
-		"swap": map[string]interface{}{
-			"used":  toGiB(node.Swap.Used),
-			"total": toGiB(node.Swap.Total),
+			"used":  toGiB(node.Disk),
+			"total": toGiB(node.MaxDisk),
 		},
 	}
 

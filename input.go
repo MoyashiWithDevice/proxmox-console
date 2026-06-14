@@ -6,5 +6,4 @@ type VMRequest struct {
 	HDD        int
 	Servername string
 	Username   string
-	Password   string
 }

@@ -13,7 +13,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   memory {
     dedicated = var.memory
-    shared = 512
   }
 
   disk {

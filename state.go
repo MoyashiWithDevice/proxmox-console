@@ -54,7 +54,7 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(dbVms)
+
 	var vms []VMInfo
 	for _, dbVm := range dbVms {
 		// VMのIDとステータスはDBから取得済み

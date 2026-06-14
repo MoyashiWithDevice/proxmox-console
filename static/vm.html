@@ -145,7 +145,7 @@ function App() {
     return function() { clearInterval(iv2); };
   }, [jobId, status, jobVMID]);
 
-  var vmItems = items.filter(function(item) { return item.type === "vm"; });
+  var vmItems = items;
   var isJob = Boolean(jobId);
 
   return h("div", { style: { display: "flex", flexDirection: "column", height: "100vh", background: "#000", color: "#fff", fontFamily: "'Inter', system-ui, sans-serif" } },
@@ -191,31 +191,139 @@ function App() {
         ),
         h("div", { style: { padding: "4px 18px 4px", fontSize: 10, color: "#2a2a2a", textTransform: "uppercase", letterSpacing: "0.1em" } }, "Virtual Machines"),
         vmItems.length === 0
-          ? h("div", { style: { padding: "6px 16px", fontSize: 12, color: "#333" } }, "なし")
-          : vmItems.map(function(v) {
-              var isActive = String(v.VMID) === String(id);
-              var isHover = hovered === "vm-" + v.VMID;
-              var vmStatus = v.status || v.Status || "unknown";
-              var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
-              return h("div", {
-                  key: v.VMID,
-                  onClick: function() { window.location.href = "/vm.html?vmid=" + v.VMID; },
-                  onMouseEnter: function() { setHovered("vm-" + v.VMID); },
-                  onMouseLeave: function() { setHovered(null); },
-                  style: {
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "6px 16px", cursor: "pointer", fontSize: 13,
-                    color: isActive ? "#fff" : isHover ? "#aaa" : "#555",
-                    background: isActive ? "#111" : "transparent",
-                    borderLeft: isActive ? "2px solid #fff" : "2px solid transparent",
-                    userSelect: "none"
-                  }
-                },
-                h("span", { style: { width: 8, height: 8, borderRadius: "50%", background: statusStyle.dot, flexShrink: 0, marginTop: 2 } }),
-                h(Icon, { name: "monitor", size: 13, color: isActive ? "#fff" : isHover ? "#555" : "#333" }),
-                h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, v.Name)
-              );
-            })
+          ? h("div",
+              { style: { padding: "6px 16px", fontSize: 12, color: "#333" } },
+              "なし"
+            )
+          : h("div", null,
+
+              vmItems.filter(function(v) {
+                return v.type !== "job";
+              }).map(function(v) {
+
+                var isActive = String(v.VMID) === String(id);
+                var isHover = hovered === "vm-" + v.VMID;
+                var vmStatus = v.status || v.Status || "unknown";
+                var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
+
+                return h("div", {
+                    key: v.VMID,
+                    onClick: function() {
+                      window.location.href = "/vm.html?vmid=" + v.VMID;
+                    },
+                    onMouseEnter: function() {
+                      setHovered("vm-" + v.VMID);
+                    },
+                    onMouseLeave: function() {
+                      setHovered(null);
+                    },
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 16px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: isActive ? "#fff" : isHover ? "#aaa" : "#555",
+                      background: isActive ? "#111" : "transparent",
+                      borderLeft: isActive ? "2px solid #fff" : "2px solid transparent",
+                      userSelect: "none"
+                    }
+                  },
+
+                  h("span", {
+                    style: {
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: statusStyle.dot,
+                      flexShrink: 0,
+                      marginTop: 2
+                    }
+                  }),
+
+                  h(Icon, {
+                    name: "monitor",
+                    size: 13,
+                    color: isActive ? "#fff" : isHover ? "#555" : "#333"
+                  }),
+
+                  h("span", {
+                    style: {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }
+                  }, v.Name)
+                );
+              }),
+
+              vmItems.some(function(v) {
+                return v.type === "job";
+              }) ? h("div", {
+                style: {
+                  padding: "8px 18px 4px",
+                  fontSize: 10,
+                  color: "#2a2a2a",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  marginTop: 14
+                }
+              }, "作成中") : null,
+
+              vmItems.filter(function(v) {
+                return v.type === "job";
+              }).map(function(v) {
+
+                var isActive = String(v.id) === String(id);
+                var isHover = hovered === "job-" + v.id;
+
+                return h("div", {
+                    key: "job-" + v.id,
+
+                    onClick: function() {
+                      window.location.href = "/vm.html?job_id=" + v.id;
+                    },
+
+                    onMouseEnter: function() {
+                      setHovered("job-" + v.id);
+                    },
+
+                    onMouseLeave: function() {
+                      setHovered(null);
+                    },
+
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 16px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: isActive ? "#fff" : isHover ? "#aaa" : "#888",
+                      background: isActive ? "#111" : "transparent",
+                      borderLeft: isActive ? "2px solid #fff" : "2px solid transparent",
+                      userSelect: "none"
+                    }
+                  },
+                  h(Icon, {
+                    name: "monitor",
+                    size: 13,
+                    color: (statusConfig[v.status] || statusConfig.unknown).color
+                  }),
+
+                  h("span", {
+                    style: {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }
+                  },
+                    v.servername + " (作成中)"
+                  )
+                );
+              })
+            )
       ),
 
       /* Main */

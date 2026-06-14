@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"github.com/gorilla/websocket"
+	tfexec "github.com/hashicorp/terraform-exec/tfexec"
 	"golang.org/x/crypto/ssh"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"io"
 )
 
 var wsUpgrader = websocket.Upgrader{
@@ -766,7 +766,7 @@ func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
 			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout: 10 * time.Second,
+		Timeout:         10 * time.Second,
 	}
 
 	return ssh.Dial("tcp", ip+":22", config)
@@ -924,8 +924,8 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 	session.Stderr = fw
 
 	stdin, err := session.StdinPipe()
-	if err != nil{
-		http.Error(w,err.Error(), 500)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
 		return
 	}
 
@@ -935,7 +935,7 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session.Run("bash --noprofile --norc")
-	go func(){
+	go func() {
 		defer stdin.Close()
 	}()
 
@@ -943,14 +943,14 @@ func vmExecHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
- 
+
 	// ── 認証 ──────────────────────────────────────────────────────────────
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
- 
+
 	// ── パラメータ取得 ────────────────────────────────────────────────────
 	vmidStr := r.URL.Query().Get("vmid")
 	if vmidStr == "" {
@@ -962,7 +962,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
- 
+
 	// ── 所有者チェック ────────────────────────────────────────────────────
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
@@ -978,21 +978,21 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
- 
+
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
 	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, vmid)
 	if err != nil || ip == "" {
 		http.Error(w, "VM IP not available", http.StatusInternalServerError)
 		return
 	}
- 
+
 	// ── SSH接続 ───────────────────────────────────────────────────────────
 	agentUser := SettingsConf.Agent.User
 	if agentUser == "" {
 		agentUser = "agent"
 	}
 	privKeyPath := filepath.Join("cert", "agent_id_rsa")
- 
+
 	sshClient, err := createSSHClient(ip, agentUser, privKeyPath)
 	if err != nil {
 		log.Printf("createSSHClient: %v", err)
@@ -1000,7 +1000,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer sshClient.Close()
- 
+
 	session, err := sshClient.NewSession()
 	if err != nil {
 		log.Printf("NewSession: %v", err)
@@ -1008,7 +1008,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer session.Close()
- 
+
 	// ── PTY設定 ───────────────────────────────────────────────────────────
 	modes := ssh.TerminalModes{
 		ssh.ECHO:          1,
@@ -1020,7 +1020,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "pty request failed", http.StatusInternalServerError)
 		return
 	}
- 
+
 	// ── stdin/stdout/stderr パイプ ─────────────────────────────────────────
 	sshIn, err := session.StdinPipe()
 	if err != nil {
@@ -1037,7 +1037,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "stderr pipe failed", http.StatusInternalServerError)
 		return
 	}
- 
+
 	// ── シェル起動 ────────────────────────────────────────────────────────
 	// Shell()を呼ぶだけでインタラクティブシェルが開始される。
 	// Run()やWait()は呼ばない（WebSocketが切れるまで維持するため）。
@@ -1046,7 +1046,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "shell start failed", http.StatusInternalServerError)
 		return
 	}
- 
+
 	// ── WebSocketアップグレード ───────────────────────────────────────────
 	// SSH確立後にアップグレードすることで、失敗時にHTTPエラーを返せる
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
@@ -1055,9 +1055,9 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
- 
+
 	done := make(chan struct{})
- 
+
 	// SSH stdout → WebSocket (BinaryMessage)
 	go func() {
 		defer close(done)
@@ -1077,7 +1077,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
- 
+
 	// SSH stderr → WebSocket (BinaryMessage)
 	go func() {
 		buf := make([]byte, 4096)
@@ -1091,7 +1091,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
- 
+
 	// WebSocket → SSH stdin
 	// テキストメッセージ: {"type":"resize","cols":N,"rows":N} でウィンドウリサイズ
 	// バイナリメッセージ: キー入力をそのままstdinへ
@@ -1118,7 +1118,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
- 
+
 	// stdoutが閉じるまで（セッション終了まで）待つ
 	<-done
 }
@@ -1140,7 +1140,7 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct{
+	var req struct {
 		VMID int `json:"vmid"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1181,7 +1181,7 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status":"started"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
 // stopVMHandler は VM を停止します
@@ -1201,7 +1201,7 @@ func stopVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct{
+	var req struct {
 		VMID int `json:"vmid"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1242,5 +1242,5 @@ func stopVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status":"stopped"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
 }

@@ -1,19 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
-	"bufio"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
-	"strings"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -206,22 +206,22 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 type loggingResponseWriter struct {
-    http.ResponseWriter
-    statusCode int
+	http.ResponseWriter
+	statusCode int
 }
 
 func (lw *loggingResponseWriter) WriteHeader(code int) {
-    lw.statusCode = code
-    lw.ResponseWriter.WriteHeader(code)
+	lw.statusCode = code
+	lw.ResponseWriter.WriteHeader(code)
 }
 func (lw *loggingResponseWriter) Flush() {
-    if flusher, ok := lw.ResponseWriter.(http.Flusher); ok {
-        flusher.Flush()
-    }
+	if flusher, ok := lw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 func (lw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-    if h, ok := lw.ResponseWriter.(http.Hijacker); ok {
-        return h.Hijack()
-    }
-    return nil, nil, fmt.Errorf("hijacker unsupported")
+	if h, ok := lw.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, fmt.Errorf("hijacker unsupported")
 }

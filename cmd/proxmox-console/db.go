@@ -95,22 +95,22 @@ CREATE TABLE IF NOT EXISTS vms (
 
 // User はユーザー情報を表します
 type User struct {
-	ID       int
-	KratosID string
-	Role     string
-	VLANID   sql.NullInt64
+	ID        int
+	KratosID  string
+	Role      string
+	VLANID    sql.NullInt64
 	CreatedAt time.Time
 }
 
 // VM はVM情報を表します
 type VM struct {
-	ID           int
-	UserID       int
-	ProxmoxVMID  int
-	NodeName     string
-	TFWorkdir    string
-	Status       string
-	CreatedAt    time.Time
+	ID          int
+	UserID      int
+	ProxmoxVMID int
+	NodeName    string
+	TFWorkdir   string
+	Status      string
+	CreatedAt   time.Time
 }
 
 // getOrCreateUser はKratos IDでユーザーを取得または作成します

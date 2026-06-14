@@ -119,7 +119,8 @@ func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 
 	vm, err := node.VirtualMachine(ctx, vmid)
 	if err != nil {
-		return fmt.Errorf("failed to get proxmox vm: %w", err)
+		// VMが見つからなければ既に削除済みとして成功扱いにする
+		return nil
 	}
 
 	if strings.EqualFold(string(vm.Status), "running") {

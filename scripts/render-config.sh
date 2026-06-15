@@ -31,7 +31,7 @@ def parse_env(path: Path) -> dict[str, str]:
     return values
 
 values = parse_env(env_file)
-required = ["KRATOS_DSN", "KRATOS_BROWSER_URL", "KRATOS_ADMIN_URL", "KRATOS_UI_URL", "APP_URL"]
+required = ["KRATOS_DSN", "KRATOS_BROWSER_URL", "KRATOS_UI_URL", "APP_URL"]
 missing = [key for key in required if not values.get(key)]
 if missing:
     print(f"error: {env_file} に {', '.join(missing)} を設定してください。", file=sys.stderr)

@@ -54,7 +54,7 @@ services:
   app-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: u22
+      POSTGRES_USER: pg_user
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: app
     volumes:
@@ -63,7 +63,7 @@ services:
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U u22 -d app"]
+      test: ["CMD-SHELL", "pg_isready -U pg_user -d app"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -77,8 +77,8 @@ services:
     environment:
       PORT: 8080
       DB_HOST: app-postgres
-      DB_PORT: 5432
-      DB_USER: u22
+      DB_PORT: 5433
+      DB_USER: pg_user
       DB_PASSWORD: secret
       DB_NAME: app
       KRATOS_API_URL: http://kratos:4433

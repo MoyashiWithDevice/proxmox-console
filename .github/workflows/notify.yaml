@@ -1,0 +1,15 @@
+name: Discord Issue Notify
+
+on:
+  issues:
+    types: [opened, closed, deleted]
+
+permissions:
+  issues: read
+  contents: read
+
+jobs:
+  notify:
+    uses: Cinnamobot/discord-issue-notify/.github/workflows/notify.yml@main
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

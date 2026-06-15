@@ -1,0 +1,8 @@
+*.env
+*proxmox.auto.tfvars
+*config.yaml
+*settings.local.json
+.claude/
+*kratos.yaml
+terraform/vms/*
+cert/*

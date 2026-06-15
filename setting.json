@@ -1,0 +1,28 @@
+{
+  "resources": {
+    "cpu": {
+      "min": 1,
+      "max": 3
+    },
+    "memory": {
+      "min": 512,
+      "max": 4096,
+      "step": 512
+    },
+    "hdd": {
+      "min": 1,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "os":[
+    {
+      "id": "ubuntu 24.04",
+      "label": "Ubuntu 24.04 LTS",
+      "template_id": 9000
+    }
+  ],
+  "agent": {
+    "user": "agent"
+  }
+}

@@ -1,0 +1,22 @@
+#cloud-config
+ssh_pwauth: false
+
+users:
+  - name: ${username}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: sudo
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${user_pubkey}
+
+  - name: ${agent_user}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: sudo
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${agent_pubkey}
+
+chpasswd:
+  expire: false

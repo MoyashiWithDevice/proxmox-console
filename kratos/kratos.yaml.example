@@ -7,8 +7,6 @@ dsn: ${KRATOS_DSN}
 serve:
   public:
     base_url: ${KRATOS_BROWSER_URL}
-  admin:
-    base_url: ${KRATOS_ADMIN_URL}
 
 selfservice:
   default_browser_return_url: ${APP_URL}

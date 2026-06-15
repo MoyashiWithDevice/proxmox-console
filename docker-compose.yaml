@@ -1,5 +1,7 @@
 version: "3.9"
-
+networks:
+  local_link:
+    driver: bridge
 services:
   kratos-postgres:
     image: postgres:16-alpine
@@ -14,6 +16,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - local_link
 
   kratos-migrate:
     image: oryd/kratos:latest
@@ -27,6 +31,8 @@ services:
       kratos-postgres:
         condition: service_healthy
     restart: on-failure
+    networks:
+      - local_link
 
   kratos:
     image: oryd/kratos:latest
@@ -40,6 +46,8 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
+    networks:
+      - local_link
 
   kratos-ui:
     image: oryd/kratos-selfservice-ui-node
@@ -54,6 +62,8 @@ services:
     depends_on:
       kratos:
         condition: service_started
+    networks:
+      - local_link
 
   app-postgres:
     image: postgres:16-alpine
@@ -69,6 +79,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - local_link
 
   app:
     build:
@@ -86,6 +98,11 @@ services:
       KRATOS_BROWSER_URL: ${KRATOS_BROWSER_URL:-http://localhost:4433}
       KRATOS_UI_URL: ${KRATOS_UI_URL:-http://localhost:3000}
       APP_URL: ${APP_URL:-http://localhost:8080}
+
+      PROXMOX_VE_ENDPOINT: ${PROXMOX_VE_ENDPOINT:-}
+      PROXMOX_VE_USERNAME: ${PROXMOX_VE_USERNAME:-}
+      PROXMOX_VE_PASSWORD: ${PROXMOX_VE_PASSWORD:-}
+      PROXMOX_VE_API_TOKEN: ${PROXMOX_VE_API_TOKEN:-}
     ports:
       - "8080:8080"
     volumes:
@@ -98,6 +115,8 @@ services:
         condition: service_started
       kratos-ui:
         condition: service_started
+    networks:
+      - local_link
 
 volumes:
   kratos-postgres-data:

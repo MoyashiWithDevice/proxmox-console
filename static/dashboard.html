@@ -176,9 +176,9 @@ function App() {
       fetch("/api/vms", { credentials: "include" })
         .then(function(r){ return r.json(); })
         .then(function(data){
-          data = data || [];
-          setItems(data);
-          setResources(resourcesFromItems(data));
+          var safe = Array.isArray(data) ? data : [];
+          setItems(safe);
+          setResources(resourcesFromItems(safe));
         }).catch(function(){});
     }
 

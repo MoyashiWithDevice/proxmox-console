@@ -22,7 +22,7 @@ type ProxmoxConfig struct {
 
 func newGoProxmoxClient() (*goProxmox.Client, error) {
 	if AppConfig.Proxmox.APIURL == "" {
-		return nil, errors.New("missing TF_VAR_proxmox_api_url")
+		return nil, errors.New("missing TF_VAR_proxmox_endpoint")
 	}
 
 	httpClient := &http.Client{

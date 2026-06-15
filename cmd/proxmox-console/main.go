@@ -78,7 +78,7 @@ func main() {
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	returnTo := AppConfig.App.URL + "/login"
-	kratosURL := AppConfig.Kratos.APIURL + "/self-service/logout/browser?return_to=" + url.QueryEscape(returnTo)
+	kratosURL := AppConfig.Kratos.BROWSERURL + "/self-service/logout/browser?return_to=" + url.QueryEscape(returnTo)
 
 	req, err := http.NewRequest("GET", kratosURL, nil)
 	if err != nil {

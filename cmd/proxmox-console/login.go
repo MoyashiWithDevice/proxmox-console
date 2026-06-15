@@ -10,7 +10,7 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		isAPI := strings.HasPrefix(r.URL.Path, "/api/")
 
-		whoamiURL := AppConfig.Kratos.APIURL + "/sessions/whoami"
+		whoamiURL := AppConfig.Kratos.BROWSERURL + "/sessions/whoami"
 		req, _ := http.NewRequest("GET", whoamiURL, nil)
 
 		for _, c := range r.Cookies() {

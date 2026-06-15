@@ -44,7 +44,7 @@ type SettingsConfig struct {
 
 type Config struct {
 	Kratos struct {
-		APIURL string // サーバー間通信用 (例: http://kratos:4433)
+		BROWSERURL string // サーバー間通信用 (例: http://kratos:4433)
 		UIURL  string
 	}
 
@@ -73,12 +73,12 @@ func mustGetenv(key string) string {
 func loadConfig() {
 	AppConfig = Config{}
 
-	AppConfig.Kratos.APIURL = mustGetenv("KRATOS_API_URL")
+	AppConfig.Kratos.BROWSERURL = mustGetenv("KRATOS_BROWSER_URL")
 	AppConfig.Kratos.UIURL = mustGetenv("KRATOS_UI_URL")
 	AppConfig.App.URL = mustGetenv("APP_URL")
 
 	// TF_VAR_ プレフィックスの環境変数を Terraform と共通で使用
-	AppConfig.Proxmox.APIURL = os.Getenv("TF_VAR_proxmox_api_url")
+	AppConfig.Proxmox.APIURL = os.Getenv("TF_VAR_proxmox_endpoint")+"/api2/json"
 	AppConfig.Proxmox.APITokenID = os.Getenv("TF_VAR_proxmox_api_token_id")
 	AppConfig.Proxmox.APITokenSecret = os.Getenv("TF_VAR_proxmox_api_token_secret")
 	AppConfig.Proxmox.Username = os.Getenv("TF_VAR_proxmox_username")

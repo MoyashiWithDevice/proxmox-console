@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+*.env
+*proxmox.auto.tfvars
+*config.yaml
+*settings.local.json
+*kratos.yaml
+cert/
+terraform/vms/

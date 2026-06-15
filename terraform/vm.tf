@@ -4,7 +4,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   on_boot = true
 
   clone {
-    vm_id = 9000
+    vm_id = var.template_id
   }
 
   cpu {

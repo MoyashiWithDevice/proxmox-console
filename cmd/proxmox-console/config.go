@@ -19,7 +19,12 @@ type ResourceLimit struct {
 	Max  int `json:"max"`
 	Step int `json:"step,omitempty"`
 }
-
+type OSOption struct {
+    ID          string `json:"id"`
+    Label       string `json:"label"`
+    // Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
+    TemplateID  int    `json:"-"`
+}
 type ResourceConstraints struct {
 	CPU    ResourceLimit `json:"cpu"`
 	Memory ResourceLimit `json:"memory"`
@@ -33,6 +38,7 @@ type AgentConfig struct {
 
 type SettingsConfig struct {
 	Resources ResourceConstraints `json:"resources"`
+	OS        []OSOption          `json:"os"`
 	Agent     AgentConfig         `json:"agent"`
 }
 
@@ -91,6 +97,9 @@ func loadSettingsConfig() {
 			CPU:    ResourceLimit{Min: 1, Max: 3},
 			Memory: ResourceLimit{Min: 512, Max: 4096, Step: 512},
 			HDD:    ResourceLimit{Min: 1, Max: 64, Step: 1},
+		},
+		OS: []OSOption {
+			{ID: "ubuntu-24.04", Label: "Ubuntu 24.04 LTS", TemplateID: 9000},
 		},
 		Agent: AgentConfig{
 			User: "agent",

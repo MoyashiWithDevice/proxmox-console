@@ -172,14 +172,13 @@ function App() {
   }
 
   useEffect(function() {
-    function fetchItems() {
-      fetch("/api/vms", { credentials: "include" })
-        .then(function(r){ return r.json(); })
-        .then(function(data){
-          data = data || [];
-          setItems(data);
-          setResources(resourcesFromItems(data));
-        }).catch(function(){});
+    function fetchJobs() {
+      fetch("/api/jobs").then(function(r) {
+        if (r.status === 401) { window.location.href = "/"; return null; }
+        return r.json();
+      }).then(function(data) {
+        if (data) setJobs(data || []);
+      }).catch(function() {});
     }
 
     fetchItems();

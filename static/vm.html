@@ -129,7 +129,7 @@ function App() {
         setJobVMID(null);
         return;
       }
-      fetch("/api/status?id=" + jobId, { credentials: "include" })
+      fetch("/api/vm?job_id=" + encodeURIComponent(jobId), { credentials: "include" })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           setStatus(data.status || "—");
@@ -379,7 +379,7 @@ function VMEditor(props) {
     if (!jobId) return;
 
     function fetchJobStatus() {
-      fetch("/api/status?id=" + jobId, { credentials: "include" })
+      fetch("/api/vm?job_id=" + encodeURIComponent(jobId), { credentials: "include" })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           setJobStatus(data.status || "—");

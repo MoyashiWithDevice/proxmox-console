@@ -90,6 +90,18 @@ function App() {
   var _r = useState({ cpu:{used:0,cores:0}, memory:{used:0,total:0}, disk:{used:0,total:0} });
   var resources = _r[0]; var setResources = _r[1];
 
+  function resourcesFromItems(data) {
+    var vms = (data || []).filter(function(item) { return item.type === "vm"; });
+    var cpuUsed = vms.reduce(function(sum, vm) { return sum + (Number(vm.Cores) || 0); }, 0);
+    var memoryUsed = vms.reduce(function(sum, vm) { return sum + ((Number(vm.Memory) || 0) / 1024); }, 0);
+    var diskUsed = vms.reduce(function(sum, vm) { return sum + (Number(vm.Hdd) || 0); }, 0);
+    return {
+      cpu: { used: cpuUsed, cores: Math.max(cpuUsed, 1) },
+      memory: { used: Math.round(memoryUsed * 10) / 10, total: Math.max(Math.round(memoryUsed * 10) / 10, 1) },
+      disk: { used: diskUsed, total: Math.max(diskUsed, 1) }
+    };
+  }
+
   function jobStatusColor(status) {
     return status === "error" ? "#f43f5e" : "#f59e0b";
   }
@@ -164,28 +176,16 @@ function App() {
       fetch("/api/vms", { credentials: "include" })
         .then(function(r){ return r.json(); })
         .then(function(data){
-          setItems(data || []);
+          data = data || [];
+          setItems(data);
+          setResources(resourcesFromItems(data));
         }).catch(function(){});
     }
 
-    function fetchResources() {
-      fetch("/api/node/resources", { credentials: "include" })
-        .then(function(r){
-          if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
-          return r.json();
-        })
-        .then(function(data){
-          setResources(data);
-        }).catch(function(err){ console.error("node/resources:", err.message); });
-    }
-
     fetchItems();
-    fetchResources();
     var iv = setInterval(fetchItems, 7000);
-    var riv = setInterval(fetchResources, 30000);
     return function() {
       clearInterval(iv);
-      clearInterval(riv);
     };
   }, []);
 
@@ -360,7 +360,7 @@ function App() {
 
       /* Stat cards */
       h("div", { style: { display: "flex", gap: 0, border: "1px solid #111", flexWrap: "wrap" } },
-        StatCard("cpu", "CPU", resources.cpu.used * 100, 100, "%"),
+        StatCard("cpu", "CPU", resources.cpu.used, resources.cpu.cores, "cores"),
         StatCard("memoryStick", "Memory", resources.memory.used, resources.memory.total, "GiB"),
         StatCard("hardDrive", "Disk", resources.disk.used, resources.disk.total, "GiB"),
       ),

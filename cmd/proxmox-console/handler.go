@@ -369,6 +369,11 @@ func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if jobID := r.URL.Query().Get("job_id"); jobID != "" {
+		vmJobStatusHandler(w, r, jobID)
+		return
+	}
+
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -400,16 +405,25 @@ func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "vm not found", 404)
 }
 
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
+func vmJobStatusHandler(w http.ResponseWriter, r *http.Request, jobID string) {
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	jobAny, ok := jobs.Load(id)
+	jobAny, ok := jobs.Load(jobID)
 	if !ok {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	job := jobAny.(*Job)
+	if job.OwnerID != userID {
+		http.Error(w, "unauthorized", http.StatusForbidden)
+		return
+	}
+
 	logBytes, _ := os.ReadFile(job.LogPath)
 
 	resp := map[string]interface{}{
@@ -433,6 +447,11 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if jobID := r.URL.Query().Get("job_id"); jobID != "" {
+		vmJobStatusHandler(w, r, jobID)
 		return
 	}
 
@@ -498,53 +517,6 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
 		fmt.Println("Warning: failed to remove user private key after download:", err)
 	}
-}
-
-func nodeResourcesHandler(w http.ResponseWriter, r *http.Request) {
-	client, err := newGoProxmoxClient()
-	if err != nil {
-		log.Printf("[node/resources] failed to create client: %v", err)
-		http.Error(w, "failed to create proxmox client: "+err.Error(), 500)
-		return
-	}
-
-	nodes, err := client.Nodes(r.Context())
-	if err != nil {
-		log.Printf("[node/resources] failed to list nodes: %v", err)
-		http.Error(w, "failed to list nodes: "+err.Error(), 500)
-		return
-	}
-
-	if len(nodes) == 0 {
-		log.Printf("[node/resources] no nodes found")
-		http.Error(w, "no nodes found", 404)
-		return
-	}
-
-	node := nodes[0]
-
-	// バイト単位をGiBに変換
-	toGiB := func(bytes uint64) float64 {
-		return float64(bytes) / 1024 / 1024 / 1024
-	}
-
-	resp := map[string]interface{}{
-		"cpu": map[string]interface{}{
-			"used":  node.CPU,
-			"cores": node.MaxCPU,
-		},
-		"memory": map[string]interface{}{
-			"used":  toGiB(node.Mem),
-			"total": toGiB(node.MaxMem),
-		},
-		"disk": map[string]interface{}{
-			"used":  toGiB(node.Disk),
-			"total": toGiB(node.MaxDisk),
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
 }
 
 func atoiSafe(s string) int {
@@ -799,7 +771,7 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, VMID: req.VMID})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, OwnerID: userID, VMID: req.VMID})
 
 	// Run VM update in background
 	go runUpdateVMJob(jobID, userID, req.VMID, req.Name, req.Cores, req.Memory, req.HDD)

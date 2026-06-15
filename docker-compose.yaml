@@ -4,13 +4,13 @@ services:
   kratos-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: kratos
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: kratos
+      POSTGRES_USER: ${KRATOS_DB_USER:-kratos}
+      POSTGRES_PASSWORD: ${KRATOS_DB_PASSWORD:-secret}
+      POSTGRES_DB: ${KRATOS_DB_NAME:-kratos}
     volumes:
       - kratos-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kratos"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,7 +22,7 @@ services:
       - ./kratos/kratos.yaml:/etc/config/kratos.yml:ro
       - ./kratos/identity.schema.json:/etc/config/identity.schema.json:ro
     environment:
-      DSN: postgres://kratos:secret@kratos-postgres:5432/kratos?sslmode=disable
+      DSN: ${KRATOS_DSN:-postgres://kratos:secret@kratos-postgres:5432/kratos?sslmode=disable}
     depends_on:
       kratos-postgres:
         condition: service_healthy
@@ -45,28 +45,31 @@ services:
     image: oryd/kratos-selfservice-ui-node
     ports:
       - "3000:3000"
-    env_file:
-      - kratos/.env
+    environment:
+      COOKIE_SECRET: ${COOKIE_SECRET:-changeme-cookie-secret-32ch}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-ory_kratos_csrf}
+      CSRF_COOKIE_SECRET: ${CSRF_COOKIE_SECRET:-changeme-csrf-secret-32ch}
+      KRATOS_PUBLIC_URL: ${KRATOS_PUBLIC_URL:-http://kratos:4433}
+      KRATOS_BROWSER_URL: ${KRATOS_BROWSER_URL:-http://localhost:4433}
     depends_on:
       - kratos
-  
+
   app-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: u22
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: app
+      POSTGRES_USER: ${DB_USER:-u22}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_DB: ${DB_NAME:-app}
     volumes:
       - app-postgres-data:/var/lib/postgresql/data
       - ./app-db:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U u22 -d app"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
-
 
 volumes:
   kratos-postgres-data:

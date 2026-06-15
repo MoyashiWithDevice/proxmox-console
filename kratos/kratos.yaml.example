@@ -1,27 +1,30 @@
-# sed -i 's/localhost/192.168.1.1/g' kratos/kratos.yaml
-dsn: postgres://kratos:secret@kratos-postgres:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+# このファイルはテンプレートです。
+# ルート直下の .env を編集してから ./scripts/render-config.sh を実行すると、
+# kratos/kratos.yaml が生成されます。
+
+dsn: ${KRATOS_DSN}
 
 serve:
   public:
-    base_url: http://localhost:4433    # Kratos自身の公開URL (ブラウザがKratos APIに直接アクセスする用)
+    base_url: ${KRATOS_BROWSER_URL}
   admin:
-    base_url: http://localhost:4434    # Kratos管理API (Kratos UIからアクセス)
+    base_url: ${KRATOS_ADMIN_URL}
 
 selfservice:
-  default_browser_return_url: http://localhost:8080  # ログイン後のリダイレクト先 (AppのURL - 別サーバの可能性あり)
+  default_browser_return_url: ${APP_URL}
   allowed_return_urls:
-    - http://localhost:8080  # ログイン後のリダイレクト先 (AppのURL - 別サーバの可能性あり)
+    - ${APP_URL}
   methods:
     password:
       enabled: true
 
   flows:
     login:
-      ui_url: http://localhost:3000/login            # ログイン画面 (Kratos UI - 別サーバの可能性あり)
+      ui_url: ${KRATOS_UI_URL}/login
     registration:
-      ui_url: http://localhost:3000/registration      # 登録画面 (Kratos UI - 別サーバの可能性あり)
+      ui_url: ${KRATOS_UI_URL}/registration
     error:
-      ui_url: http://localhost:3000/error             # エラー画面 (Kratos UI - 別サーバの可能性あり)
+      ui_url: ${KRATOS_UI_URL}/error
 identity:
   schemas:
     - id: default

@@ -19,7 +19,6 @@ Proxmox VE
 terraform/
 ├── provider.tf                 # Provider定義・バージョン制約
 ├── variables.tf                # 変数宣言
-├── proxmox.auto.tfvars.example # 認証情報テンプレート（.gitignore推奨）
 ├── vm.tf                       # VMリソース定義
 ├── snippets.tf                 # cloud-initスニペット定義
 └── cloud-config.yaml           # cloud-init テンプレート
@@ -37,23 +36,17 @@ terraform/
 
 ## 環境変数
 
-### アプリケーション (.env)
+### ルート `.env`
 
 ```bash
-HOST_NAME=your-host-name    # Proxmoxノード名（node_nameに使用）
-PORT=3000                    # Go サーバーのリッスンポート
+PORT=8080
+TF_VAR_proxmox_endpoint=https://192.168.1.10:8006/
+TF_VAR_proxmox_username=root@pam
+TF_VAR_proxmox_password=your-password
+TF_VAR_node_name=Host-1
 ```
 
-### Terraform認証 (proxmox.auto.tfvars)
-
-```bash
-proxmox_endpoint = "https://192.168.1.10:8006"   # Proxmox API URL
-proxmox_username = "root@pam"                      # Proxmoxユーザー
-proxmox_password = "your-password"                  # Proxmoxパスワード
-node_name        = "Host-1"                         # デフォルトノード名
-```
-
-`proxmox.auto.tfvars` は自動で読み込まれる。`.gitignore` に追加すること。
+Terraform は `TF_VAR_` プレフィックス付き環境変数を自動的に変数として読み込みます。認証情報は `proxmox.auto.tfvars` に書き出さず、ルート `.env` からアプリプロセス経由で Terraform に引き継ぎます。
 
 ## 関連ドキュメント
 

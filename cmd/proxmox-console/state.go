@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,32 +54,38 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(dbVms)
+
 	var vms []VMInfo
 	for _, dbVm := range dbVms {
 		// VMのIDとステータスはDBから取得済み
+		// IPアドレスはAPIから取得するため、初期値は「-」とする
 		vm := VMInfo{
 			VMID:   dbVm.ProxmoxVMID,
 			Status: dbVm.Status,
+			IP:     "-",
+		}
+
+		if strings.EqualFold(dbVm.Status, "completed") {
+			if status, err := getProxmoxVMStatus(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
+				vm.Status = status
+			} else {
+				log.Printf("warning: failed to resolve Proxmox runtime status for VM %d on node %s: %v", dbVm.ProxmoxVMID, dbVm.NodeName, err)
+			}
 		}
 
 		// その他のリソースはtfstateから取得する
 		tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
 		b, err := os.ReadFile(tfstatePath)
 		if err != nil {
-			if ip := findJobIPForVM(vm.VMID); ip != "" {
-				vm.IP = ip
-			}
-			vms = append(vms, vm)
+			// tfstate が読み込めない場合、そのVMは返さない (情報が不完全)
+			log.Printf("warning: terraform.tfstate not found for VM %d: %v", dbVm.ProxmoxVMID, err)
 			continue
 		}
 
 		var state TFState
 		if err := json.Unmarshal(b, &state); err != nil {
-			if ip := findJobIPForVM(vm.VMID); ip != "" {
-				vm.IP = ip
-			}
-			vms = append(vms, vm)
+			// JSON のアンマーシャルに失敗した場合、そのVMは返さない
+			log.Printf("warning: failed to unmarshal terraform.tfstate for VM %d: %v", dbVm.ProxmoxVMID, err)
 			continue
 		}
 
@@ -101,22 +109,26 @@ func listUserVMs(userID string) ([]VMInfo, error) {
 			if hdd, ok := parseFirstMapInt(attr["disk"], "size"); ok {
 				vm.Hdd = hdd
 			}
-			if ip := parseIPv4Addresses(attr["ipv4_addresses"]); ip != "" {
-				vm.IP = ip
-			}
-			if jobIP := findJobIPForVM(vm.VMID); jobIP != "" {
-				vm.IP = jobIP
+
+			// リアルタイムのIPアドレスをProxmox APIから取得
+			if apiIP, err := getProxmoxVMIP(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil && apiIP != "" {
+				vm.IP = apiIP
 			}
 
-			vms = append(vms, vm)
+			// 必須情報が全て揃っているかチェック (Name, Memory, Cores, Hdd)
+			// IP は任意情報なので、「-」でも OK
+			if vm.Name != "" && vm.Memory > 0 && vm.Cores > 0 && vm.Hdd > 0 {
+				vms = append(vms, vm)
+			} else {
+				log.Printf("warning: VM %d has incomplete information: Name=%s, Memory=%d, Cores=%d, Hdd=%d",
+					dbVm.ProxmoxVMID, vm.Name, vm.Memory, vm.Cores, vm.Hdd)
+			}
 			found = true
 		}
 
 		if !found {
-			if ip := findJobIPForVM(vm.VMID); ip != "" {
-				vm.IP = ip
-			}
-			vms = append(vms, vm)
+			// tfstate から VM リソースが見つからない場合、そのVMは返さない
+			log.Printf("warning: proxmox_virtual_environment_vm resource not found in terraform.tfstate for VM %d", dbVm.ProxmoxVMID)
 		}
 	}
 

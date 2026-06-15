@@ -95,22 +95,22 @@ CREATE TABLE IF NOT EXISTS vms (
 
 // User はユーザー情報を表します
 type User struct {
-	ID       int
-	KratosID string
-	Role     string
-	VLANID   sql.NullInt64
+	ID        int
+	KratosID  string
+	Role      string
+	VLANID    sql.NullInt64
 	CreatedAt time.Time
 }
 
 // VM はVM情報を表します
 type VM struct {
-	ID           int
-	UserID       int
-	ProxmoxVMID  int
-	NodeName     string
-	TFWorkdir    string
-	Status       string
-	CreatedAt    time.Time
+	ID          int
+	UserID      int
+	ProxmoxVMID int
+	NodeName    string
+	TFWorkdir   string
+	Status      string
+	CreatedAt   time.Time
 }
 
 // getOrCreateUser はKratos IDでユーザーを取得または作成します
@@ -195,6 +195,41 @@ func getVM(vmID int) (*VM, error) {
 	}
 
 	return vm, nil
+}
+
+func getVMByProxmoxID(proxmoxID int) (*VM, error) {
+	vm := &VM{}
+	err := db.QueryRow(
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1",
+		proxmoxID,
+	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm: %w", err)
+	}
+
+	return vm, nil
+}
+
+func deleteVMByProxmoxID(proxmoxID int) error {
+	result, err := db.Exec(
+		"DELETE FROM vms WHERE proxmox_vm_id = $1",
+		proxmoxID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete vm: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // updateVMStatus はVM のステータスを更新します

@@ -43,10 +43,11 @@ var statusConfig = {
   error:   { dot: "#f43f5e", color: "#f43f5e" },
   "running(init)":  { dot: "#f59e0b", color: "#f59e0b" },
   "running(apply)": { dot: "#f59e0b", color: "#f59e0b" },
+  unknown: { dot: "#555", color: "#555" },
 };
 
 function Badge(status) {
-  var s = statusConfig[status] || { dot: "#555", color: "#555" };
+  var s = statusConfig[status] || statusConfig.unknown;
   return h("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: s.color } },
     h("span", { style: { width: 7, height: 7, borderRadius: "50%", background: s.dot, flexShrink: 0 } }),
     status
@@ -86,6 +87,20 @@ var useEffect = React.useEffect;
 function App() {
   var _i = useState([]); var items = _i[0]; var setItems = _i[1];
   var _h = useState(null); var hovered = _h[0]; var setHovered = _h[1];
+  var _r = useState({ cpu:{used:0,cores:0}, memory:{used:0,total:0}, disk:{used:0,total:0} });
+  var resources = _r[0]; var setResources = _r[1];
+
+  function resourcesFromItems(data) {
+    var vms = (data || []).filter(function(item) { return item.type === "vm"; });
+    var cpuUsed = vms.reduce(function(sum, vm) { return sum + (Number(vm.Cores) || 0); }, 0);
+    var memoryUsed = vms.reduce(function(sum, vm) { return sum + ((Number(vm.Memory) || 0) / 1024); }, 0);
+    var diskUsed = vms.reduce(function(sum, vm) { return sum + (Number(vm.Hdd) || 0); }, 0);
+    return {
+      cpu: { used: cpuUsed, cores: Math.max(cpuUsed, 1) },
+      memory: { used: Math.round(memoryUsed * 10) / 10, total: Math.max(Math.round(memoryUsed * 10) / 10, 1) },
+      disk: { used: diskUsed, total: Math.max(diskUsed, 1) }
+    };
+  }
 
   function jobStatusColor(status) {
     return status === "error" ? "#f43f5e" : "#f59e0b";
@@ -107,9 +122,13 @@ function App() {
       ),
       h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, item.ip || "—"),
       h("td", { style: td }, "—"),
-      h("td", { style: td }, "—")
+      h("td", { style: td }, "—"),
+      h("td", { style: td }, "")
       );
     }
+
+    var vmStatus = item.status || item.Status || "unknown";
+    var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
 
     return h("tr", {
       key: item.VMID,
@@ -118,14 +137,37 @@ function App() {
     },
     h("td", { style: Object.assign({}, td, { color: "#2a2a2a" }) }, item.VMID),
     h("td", { style: Object.assign({}, td, { color: "#fff" }) },
-      h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-        h(Icon, { name: "monitor", size: 13, color: "#333" }),
-        item.Name
+      h("div", { style: { display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" } },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          h(Icon, { name: "monitor", size: 13, color: statusStyle.color }),
+          item.Name
+        ),
+        Badge(vmStatus)
       )
     ),
     h("td", { style: Object.assign({}, td, { fontFamily: "monospace", fontSize: 12 }) }, item.IP || "—"),
     h("td", { style: td }, item.Cores),
-    h("td", { style: td }, item.Memory + " MB")
+    h("td", { style: td }, item.Memory + " MB"),
+    h("td", { style: Object.assign({}, td, { width: 140 }) },
+      h("button", {
+        onClick: function(e) {
+          e.stopPropagation();
+          var action = (vmStatus === 'running') ? 'stop' : 'start';
+          if (action === 'stop' && !confirm('このVMを停止しますか？')) return;
+          fetch('/api/vm/' + action, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vmid: item.VMID })
+          }).then(function(res){
+            if (!res.ok) return res.text().then(function(t){ throw new Error(t); });
+            // refresh list
+            window.location.reload();
+          }).catch(function(err){ alert('操作に失敗しました: ' + err.message); });
+        },
+        style: { padding: '6px 10px', borderRadius: 6, border: 'none', background: vmStatus === 'running' ? '#dc2626' : '#16a34a', color: '#fff', cursor: 'pointer' }
+      }, vmStatus === 'running' ? 'Stop' : 'Start')
+    )
     );
   }
 
@@ -134,7 +176,9 @@ function App() {
       fetch("/api/vms", { credentials: "include" })
         .then(function(r){ return r.json(); })
         .then(function(data){
-          setItems(data || []);
+          data = data || [];
+          setItems(data);
+          setResources(resourcesFromItems(data));
         }).catch(function(){});
     }
 
@@ -165,12 +209,16 @@ function App() {
 
     /* Header */
     h("div", { style: { display: "flex", alignItems: "center", padding: "0 32px", height: 52, borderBottom: "1px solid #111", flexShrink: 0 } },
-      h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-        h(Icon, { name: "server", size: 16, color: "#fff" }),
+      h("a", { href: "/", style: { display: "flex", alignItems: "center", gap: 10, textDecoration: "none" } },
         h("span", { style: { fontSize: 14, fontWeight: 600, color: "#fff", letterSpacing: "-0.01em" } }, "Proxmox Console"),
         h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
       ),
-      h("div", { style: { marginLeft: "auto" } },
+      h("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 } },
+        h("button", { "aria-label": "Support", onClick: function() {
+          window.location.href = "/support.html";
+        }, style: { background: "none", border: "1px solid #222", cursor: "pointer", padding: "8px 12px", borderRadius: 8, color: "#ddd", fontSize: 12 } },
+          "サポート"
+        ),
         h("button", { "aria-label": "Logout", onClick: function() {
           window.location.href = "/logout";
         }, style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 } },
@@ -211,6 +259,8 @@ function App() {
           : h("div", null,
               completedVMs.map(function(vm) {
                 var isHover = hovered === "vm-" + vm.VMID;
+                var vmStatus = vm.status || vm.Status || "unknown";
+                var statusStyle = statusConfig[vmStatus] || statusConfig.unknown;
 
                 return h("div", {
                     key: vm.VMID,
@@ -230,6 +280,16 @@ function App() {
                       userSelect: "none"
                     }
                   },
+                  h("span", {
+                    style: {
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: statusStyle.dot,
+                      flexShrink: 0,
+                      marginTop: 2
+                    }
+                  }),
                   h(Icon, {
                     name: "monitor",
                     size: 13,
@@ -300,10 +360,9 @@ function App() {
 
       /* Stat cards */
       h("div", { style: { display: "flex", gap: 0, border: "1px solid #111", flexWrap: "wrap" } },
-        StatCard("cpu", "CPU", 23, 100, "%"),
-        StatCard("memoryStick", "Memory", 10.4, 31.4, "GiB"),
-        StatCard("hardDrive", "Disk", 18, 100, "GiB"),
-        StatCard("layers", "Swap", 0.2, 8, "GiB")
+        StatCard("cpu", "CPU", resources.cpu.used, resources.cpu.cores, "cores"),
+        StatCard("memoryStick", "Memory", resources.memory.used, resources.memory.total, "GiB"),
+        StatCard("hardDrive", "Disk", resources.disk.used, resources.disk.total, "GiB"),
       ),
 
       /* Meta info */
@@ -334,7 +393,7 @@ function App() {
           : h("div", { style: { overflowX: "auto" } },
               h("table", { style: { width: "100%", borderCollapse: "collapse" } },
                 h("thead", null,
-                  h("tr", null, ["VMID", "名前", "IP", "CPU", "Memory"].map(function(hdr) {
+                  h("tr", null, ["VMID", "名前", "IP", "CPU", "Memory", "Action"].map(function(hdr) {
                     return h("th", { key: hdr, style: th }, hdr);
                   }))
                 ),

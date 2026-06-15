@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Terminal</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"/>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<style>
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #1a1a1a;
+    overflow: hidden;
+}
+#root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+#terminal-container {
+    flex: 1;
+    padding: 8px;
+    overflow: hidden;
+}
+/* xterm.jsのcanvasが親要素にフィットするよう */
+.xterm, .xterm-viewport, .xterm-screen {
+    width: 100% !important;
+    height: 100% !important;
+}
+#status-bar {
+    padding: 4px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    background: #111;
+    color: #888;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    border-top: 1px solid #333;
+    user-select: none;
+}
+#status-bar .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
+    display: inline-block;
+}
+#status-bar .dot.connected { background: #4caf50; }
+#status-bar .dot.error     { background: #f44336; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+var h = React.createElement;
+var useState  = React.useState;
+var useEffect = React.useEffect;
+var useRef    = React.useRef;
+
+// ─── ターミナルコンポーネント ────────────────────────────────────────────────
+function App() {
+
+    var params = new URLSearchParams(location.search);
+    var vmid   = params.get("vmid") || "";
+
+    var containerRef = useRef(null);
+    var termRef      = useRef(null);   // Terminal インスタンス
+    var fitRef       = useRef(null);   // FitAddon インスタンス
+    var wsRef        = useRef(null);   // WebSocket インスタンス
+
+    var statusState  = useState("connecting");  // "connecting" | "connected" | "disconnected" | "error"
+    var status       = statusState[0];
+    var setStatus    = statusState[1];
+
+    var msgState     = useState("");
+    var statusMsg    = msgState[0];
+    var setStatusMsg = msgState[1];
+
+    // ── xterm.js 初期化 ──────────────────────────────────────────────────
+    useEffect(function() {
+        var term = new Terminal({
+            cursorBlink:   true,
+            scrollback:    5000,
+            fontSize:      14,
+            fontFamily:    "\"Cascadia Code\", \"Fira Code\", Consolas, monospace",
+            convertEol:    false,   // サーバ側のCRLFをそのまま使う
+            theme: {
+                background: "#1a1a1a",
+                foreground: "#e0e0e0",
+                cursor:     "#ffffff",
+                black:      "#1a1a1a",
+                brightBlack:"#555555",
+            },
+        });
+
+        var fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.open(containerRef.current);
+        fit.fit();
+
+        termRef.current = term;
+        fitRef.current  = fit;
+
+        // ウィンドウリサイズに追従
+        function onResize() {
+            fit.fit();
+            // リサイズをサーバへ通知
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                var dims = fit.proposeDimensions();
+                if (dims) {
+                    wsRef.current.send(JSON.stringify({
+                        type: "resize",
+                        cols: dims.cols,
+                        rows: dims.rows,
+                    }));
+                }
+            }
+        }
+        window.addEventListener("resize", onResize);
+
+        return function() {
+            window.removeEventListener("resize", onResize);
+            term.dispose();
+        };
+    }, []);
+
+    // ── WebSocket 接続 ───────────────────────────────────────────────────
+    useEffect(function() {
+        if (!vmid) {
+            setStatus("error");
+            setStatusMsg("URLに ?vmid=<id> が必要です");
+            return;
+        }
+
+        var proto = location.protocol === "https:" ? "wss" : "ws";
+        var wsUrl = proto + "://" + location.host + "/api/vm/terminal?vmid=" + encodeURIComponent(vmid);
+
+        var ws = new WebSocket(wsUrl);
+        ws.binaryType = "arraybuffer";
+        wsRef.current = ws;
+
+        ws.onopen = function() {
+            setStatus("connected");
+            setStatusMsg("VM " + vmid + " に接続中");
+            // 接続直後に現在のターミナルサイズを送る
+            if (fitRef.current) {
+                var dims = fitRef.current.proposeDimensions();
+                if (dims) {
+                    ws.send(JSON.stringify({
+                        type: "resize",
+                        cols: dims.cols,
+                        rows: dims.rows,
+                    }));
+                }
+            }
+        };
+
+        ws.onmessage = function(evt) {
+            if (!termRef.current) return;
+            if (evt.data instanceof ArrayBuffer) {
+                termRef.current.write(new Uint8Array(evt.data));
+            } else {
+                termRef.current.write(evt.data);
+            }
+        };
+
+        ws.onclose = function(evt) {
+            setStatus("disconnected");
+            setStatusMsg("切断されました (code=" + evt.code + ")");
+            if (termRef.current) {
+                termRef.current.writeln("\r\n\r\n\x1b[33m[セッションが終了しました]\x1b[0m");
+            }
+        };
+
+        ws.onerror = function() {
+            setStatus("error");
+            setStatusMsg("接続エラー");
+        };
+
+        return function() {
+            ws.close();
+        };
+    }, [vmid]);
+
+    // ── キー入力 → WebSocket ─────────────────────────────────────────────
+    useEffect(function() {
+        if (!termRef.current) return;
+
+        // onData はターミナルへの入力データ（制御文字含む）を返す
+        var disposable = termRef.current.onData(function(data) {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(data);   // テキストフレームで送信
+            }
+        });
+
+        return function() {
+            disposable.dispose();
+        };
+    }, []);   // termRef はrefなので依存配列は空でOK
+
+    // ── ステータスバーの色 ───────────────────────────────────────────────
+    var dotClass = "dot";
+    if      (status === "connected")    dotClass += " connected";
+    else if (status === "error")        dotClass += " error";
+    else if (status === "disconnected") dotClass += " error";
+
+    var statusLabel = {
+        connecting:   "接続中...",
+        connected:    "接続済み",
+        disconnected: "切断",
+        error:        "エラー",
+    }[status] || status;
+
+    return h("div", { style: { display:"flex", flexDirection:"column", height:"100vh" } },
+        h("div", { id: "terminal-container", ref: containerRef }),
+        h("div", { id: "status-bar" },
+            h("span", { className: dotClass }),
+            h("span", null, statusLabel),
+            statusMsg ? h("span", { style: { color: "#aaa" } }, "— " + statusMsg) : null,
+        )
+    );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>

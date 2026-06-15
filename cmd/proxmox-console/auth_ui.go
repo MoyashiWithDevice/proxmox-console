@@ -347,7 +347,6 @@ function LeftPanel() {
     h("div",{style:{
       display:"flex",alignItems:"center",gap:10,position:"relative",
     }},
-      h(Icon,{name:"server",size:14,color:"#fff"}),
       h("span",{style:{fontSize:13,fontWeight:600,letterSpacing:"-0.01em"}},"Proxmox Console"),
       h("span",{style:{fontSize:11,color:"#555",marginLeft:2}},"v1.0")
     ),
@@ -496,8 +495,7 @@ function ErrorPage() {
       padding:"0 32px",height:52,
       borderBottom:"1px solid #111",flexShrink:0,
     }},
-      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-        h(Icon,{name:"server",size:16,color:"#fff"}),
+      h("a",{href:"/",style:{display:"flex",alignItems:"center",gap:10,textDecoration:"none"}},
         h("span",{style:{fontSize:14,fontWeight:600,color:"#fff",letterSpacing:"-0.01em"}},"Proxmox Console"),
         h("span",{style:{fontSize:11,color:"#333",marginLeft:2}},"v1.0")
       ),

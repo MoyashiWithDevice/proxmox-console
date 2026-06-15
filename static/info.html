@@ -10,6 +10,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;color:#fff;font-family:'Inter',system-ui,sans-serif}
 input:focus{border-color:#fff !important}
+.os-card{transition:border-color 0.12s,background 0.12s;cursor:pointer}
+.os-card:hover{border-color:#2a2a2a !important;background:#080808 !important}
+.os-card.selected{border-color:#fff !important;background:#0a0a0a !important}
+.os-radio{transition:background 0.12s,border-color 0.12s}
 </style>
 </head>
 <body>
@@ -17,23 +21,118 @@ input:focus{border-color:#fff !important}
 <script>
 
 var iconPaths = {
-  server: "M5 4H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M5 14H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-2",
-  monitor: "M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4",
-  hardDrive: "M22 12H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01",
-  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-  logOut: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  server:    "M5 4H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M5 14H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-2",
+  monitor:   "M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4",
+  logOut:    "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   arrowLeft: "M19 12H5M12 19l-7-7 7-7",
+  layers:    "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
 };
+
+var h = React.createElement;
+var useState = React.useState;
+var useEffect = React.useEffect;
 
 function Icon(props) {
   return h("svg", {
     width: props.size || 16, height: props.size || 16, viewBox: "0 0 24 24",
-    fill: "none", stroke: props.color || "#fff", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round",
+    fill: "none", stroke: props.color || "#fff", strokeWidth: 2,
+    strokeLinecap: "round", strokeLinejoin: "round",
     style: Object.assign({ flexShrink: 0 }, props.style || {}),
   }, h("path", { d: iconPaths[props.name] }));
 }
 
-var h = React.createElement;
+var inputStyle = {
+  width: "100%", padding: "10px 14px", fontSize: 14,
+  background: "#0a0a0a", color: "#ccc",
+  border: "1px solid #111", borderRadius: 4, outline: "none",
+};
+
+function Field(props) {
+  return h("div", { style: { padding: "24px 32px", border: "1px solid #111", marginTop: -1 } },
+    h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
+      h(Icon, { name: props.icon, size: 14, color: "#444" }),
+      h("label", { style: { fontSize: 11, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em" } }, props.label)
+    ),
+    h("input", {
+      type: props.type || "text",
+      name: props.name,
+      placeholder: props.placeholder,
+      required: true,
+      style: inputStyle,
+    })
+  );
+}
+
+// OSラベルの先頭2文字をアイコン代わりに表示
+function OsGlyph(props) {
+  return h("div", {
+    style: {
+      width: 30, height: 30, borderRadius: 3, flexShrink: 0,
+      background: "#161616", border: "1px solid #1e1e1e",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 11, fontWeight: 700, color: "#555",
+      fontFamily: "monospace", letterSpacing: "-0.03em",
+    }
+  }, (props.label || "?").slice(0, 2).toUpperCase());
+}
+
+function OsSelector(props) {
+  var osList   = props.osList;
+  var selected = props.selected;
+  var onSelect = props.onSelect;
+
+  return h("div", { style: { border: "1px solid #111", marginTop: -1 } },
+    // セクションヘッダ
+    h("div", {
+      style: {
+        padding: "14px 32px", borderBottom: "1px solid #111",
+        display: "flex", alignItems: "center", gap: 8,
+      }
+    },
+      h(Icon, { name: "layers", size: 14, color: "#444" }),
+      h("span", {
+        style: { fontSize: 11, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em" }
+      }, "OS")
+    ),
+
+    // OSカード一覧
+    osList.length === 0
+      ? h("div", { style: { padding: "20px 32px", fontSize: 13, color: "#333" } }, "読み込み中…")
+      : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" } },
+          osList.map(function(os) {
+            var sel = selected === os.id;
+            return h("div", {
+              key: os.id,
+              className: "os-card" + (sel ? " selected" : ""),
+              onClick: function() { onSelect(os.id); },
+              style: {
+                padding: "14px 18px",
+                border: "1px solid #111",
+                margin: "-1px 0 0 -1px",
+                display: "flex", alignItems: "center", gap: 12,
+              }
+            },
+              // ラジオドット
+              h("div", {
+                className: "os-radio",
+                style: {
+                  width: 13, height: 13, borderRadius: "50%", flexShrink: 0,
+                  border: "1px solid " + (sel ? "#fff" : "#333"),
+                  background: sel ? "#fff" : "transparent",
+                }
+              }),
+              h(OsGlyph, { label: os.label }),
+              h("span", {
+                style: { fontSize: 13, color: sel ? "#fff" : "#666", fontWeight: sel ? 500 : 400 }
+              }, os.label)
+            );
+          })
+        ),
+
+    // フォーム送信用 hidden
+    h("input", { type: "hidden", name: "os", value: selected || "" })
+  );
+}
 
 function App() {
   var params = new URLSearchParams(window.location.search);
@@ -41,40 +140,79 @@ function App() {
   var mem = params.get("memory") || "1024";
   var hdd = params.get("hdd") || "10";
 
-  var inputStyle = {
-    width: "100%", padding: "10px 14px", fontSize: 14,
-    background: "#0a0a0a", color: "#ccc",
-    border: "1px solid #111", borderRadius: 4, outline: "none",
-  };
+  var osListState   = useState([]);
+  var osList        = osListState[0];
+  var setOsList     = osListState[1];
 
-  function Field(icon, label, name, placeholder, type) {
-    return h("div", { style: { padding: "24px 32px", border: "1px solid #111" } },
-      h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
-        h(Icon, { name: icon, size: 14, color: "#444" }),
-        h("label", { style: { fontSize: 11, color: "#444", textTransform: "uppercase", letterSpacing: "0.08em" } }, label)
-      ),
-      h("input", { type: type || "text", name: name, placeholder: placeholder, required: true, style: inputStyle })
-    );
+  var selectedState = useState("");
+  var selectedOs    = selectedState[0];
+  var setSelectedOs = selectedState[1];
+
+  var osErrState    = useState(null);
+  var osError       = osErrState[0];
+  var setOsError    = osErrState[1];
+
+  useEffect(function() {
+    fetch("/api/settings")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var list = Array.isArray(data.os) ? data.os : [];
+        setOsList(list);
+        if (list.length > 0) setSelectedOs(list[0].id);
+      })
+      .catch(function() {
+        setOsError("OSリストの取得に失敗しました");
+      });
+  }, []);
+
+  function handleSubmit(e) {
+    if (!selectedOs) {
+      e.preventDefault();
+      setOsError("OSを選択してください");
+    }
   }
 
-  return h("div", { style: { display: "flex", flexDirection: "column", height: "100vh", minHeight: 600, background: "#000", color: "#fff", fontFamily: "'Inter', system-ui, sans-serif" } },
+  return h("div", {
+    style: {
+      display: "flex", flexDirection: "column",
+      height: "100vh", minHeight: 600,
+      background: "#000", color: "#fff",
+      fontFamily: "'Inter', system-ui, sans-serif",
+    }
+  },
 
-    /* Header */
-    h("div", { style: { display: "flex", alignItems: "center", padding: "0 32px", height: 52, borderBottom: "1px solid #111", flexShrink: 0 } },
+    /* ── Header ── */
+    h("div", {
+      style: {
+        display: "flex", alignItems: "center",
+        padding: "0 32px", height: 52,
+        borderBottom: "1px solid #111", flexShrink: 0,
+      }
+    },
       h("a", { href: "/", style: { display: "flex", alignItems: "center", gap: 10, textDecoration: "none" } },
-        h(Icon, { name: "server", size: 16, color: "#fff" }),
         h("span", { style: { fontSize: 14, fontWeight: 600, color: "#fff", letterSpacing: "-0.01em" } }, "Proxmox Console"),
         h("span", { style: { fontSize: 11, color: "#333", marginLeft: 2 } }, "v1.0")
       ),
       h("div", { style: { marginLeft: "auto" } },
-        h("button", { "aria-label": "Logout", style: { background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, color: "#444", fontSize: 12 } },
-          h(Icon, { name: "logOut", size: 14, color: "#444" }), "Logout"
-        )
+        h("button", {
+          "aria-label": "Logout",
+          style: {
+            background: "none", border: "none", cursor: "pointer",
+            padding: 0, display: "flex", alignItems: "center", gap: 6,
+            color: "#444", fontSize: 12,
+          }
+        }, h(Icon, { name: "logOut", size: 14, color: "#444" }), "Logout")
       )
     ),
 
-    /* Main */
-    h("div", { style: { flex: 1, overflowY: "auto", padding: "32px 40px", display: "flex", flexDirection: "column", gap: 0 } },
+    /* ── Main ── */
+    h("div", {
+      style: {
+        flex: 1, overflowY: "auto",
+        padding: "32px 40px",
+        display: "flex", flexDirection: "column",
+      }
+    },
 
       /* Breadcrumb */
       h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#333", marginBottom: 24 } },
@@ -86,10 +224,14 @@ function App() {
       ),
 
       /* Title */
-      h("div", { style: { fontSize: 22, fontWeight: 300, color: "#fff", letterSpacing: "-0.02em", marginBottom: 28 } }, "サーバ情報入力"),
+      h("div", {
+        style: { fontSize: 22, fontWeight: 300, color: "#fff", letterSpacing: "-0.02em", marginBottom: 28 }
+      }, "サーバ情報入力"),
 
       /* Resource summary */
-      h("div", { style: { padding: "16px 32px", border: "1px solid #111", display: "flex", gap: 28, marginBottom: 24 } },
+      h("div", {
+        style: { padding: "16px 32px", border: "1px solid #111", display: "flex", gap: 28, marginBottom: 24 }
+      },
         [["CPU", cpu + " コア"], ["メモリ", mem + " MB"], ["ディスク", hdd + " GB"]].map(function(s) {
           return h("div", { key: s[0] },
             h("div", { style: { fontSize: 11, color: "#333", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.07em" } }, s[0]),
@@ -101,25 +243,47 @@ function App() {
       /* Form */
       h("form", {
         method: "POST", action: "/api/create",
-        style: { display: "flex", flexDirection: "column", gap: 0 }
+        onSubmit: handleSubmit,
+        style: { display: "flex", flexDirection: "column" },
       },
-        h("input", { type: "hidden", name: "cpu", value: cpu }),
+        h("input", { type: "hidden", name: "cpu",    value: cpu }),
         h("input", { type: "hidden", name: "memory", value: mem }),
-        h("input", { type: "hidden", name: "hdd", value: hdd }),
+        h("input", { type: "hidden", name: "hdd",    value: hdd }),
 
-        Field("server", "サーバ名", "servername", "例: web-server-01"),
-        Field("monitor", "ユーザ名", "username", "例: admin"),
-        Field("shield", "ユーザパスワード", "password", "••••••••", "password"),
+        h(Field, { icon: "server",  label: "サーバ名", name: "servername", placeholder: "例: web-server-01" }),
+        h(Field, { icon: "monitor", label: "ユーザ名", name: "username",   placeholder: "例: admin" }),
+
+        h(OsSelector, { osList: osList, selected: selectedOs, onSelect: setSelectedOs }),
+
+        osError
+          ? h("div", { style: { padding: "10px 32px", fontSize: 12, color: "#e05" } }, osError)
+          : null,
 
         /* Actions */
-        h("div", { style: { padding: "18px 32px", border: "1px solid #111", marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
+        h("div", {
+          style: {
+            padding: "18px 32px", border: "1px solid #111", marginTop: 24,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            flexWrap: "wrap", gap: 12,
+          }
+        },
           h("a", {
             href: "/resource.html?cpu=" + cpu + "&memory=" + mem + "&hdd=" + hdd,
-            style: { textDecoration: "none", background: "transparent", border: "1px solid #111", borderRadius: 4, padding: "10px 20px", fontSize: 13, color: "#444", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }
+            style: {
+              textDecoration: "none", background: "transparent",
+              border: "1px solid #111", borderRadius: 4,
+              padding: "10px 20px", fontSize: 13, color: "#444",
+              display: "flex", alignItems: "center", gap: 6,
+            }
           }, h(Icon, { name: "arrowLeft", size: 14, color: "#444" }), "戻る"),
+
           h("button", {
             type: "submit",
-            style: { background: "#fff", color: "#000", border: "none", borderRadius: 4, padding: "10px 28px", fontSize: 13, fontWeight: 500, cursor: "pointer" }
+            style: {
+              background: "#fff", color: "#000", border: "none",
+              borderRadius: 4, padding: "10px 28px",
+              fontSize: 13, fontWeight: 500, cursor: "pointer",
+            }
           }, "仮想マシンを作成")
         )
       )
@@ -128,7 +292,6 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(h(App));
-
 </script>
 </body>
 </html>

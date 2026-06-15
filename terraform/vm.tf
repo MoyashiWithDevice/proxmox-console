@@ -1,9 +1,10 @@
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.servername
   node_name = var.node_name
+  on_boot = true
 
   clone {
-    vm_id = 9000
+    vm_id = var.template_id
   }
 
   cpu {
@@ -12,7 +13,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   memory {
     dedicated = var.memory
-    shared = 512
   }
 
   disk {
@@ -24,7 +24,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   network_device {
     bridge  = "vmbr0"
     model   = "virtio"
-    vlan_id = 10
+#    vlan_id = 
   }
 
   initialization {

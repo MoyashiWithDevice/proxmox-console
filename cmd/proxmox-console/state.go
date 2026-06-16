@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 type TFState struct {
@@ -43,96 +45,147 @@ func findJobIPForVM(vmid int) string {
 }
 
 func listUserVMs(userID string) ([]VMInfo, error) {
-	// KratosIDからAppIDを取得
-	dbUserID, err := getDatabaseUserID(userID)
-	if err != nil {
-		return nil, err
-	}
+    dbUserID, err := getDatabaseUserID(userID)
+    if err != nil {
+        return nil, err
+    }
+    dbVms, err := getUserVMs(dbUserID)
+    if err != nil {
+        return nil, err
+    }
 
-	// AppIDから当該ユーザが所有するVM一覧を取得
-	dbVms, err := getUserVMs(dbUserID)
-	if err != nil {
-		return nil, err
-	}
+    type result struct {
+        vm  VMInfo
+        ok  bool
+    }
 
-	var vms []VMInfo
-	for _, dbVm := range dbVms {
-		// VMのIDとステータスはDBから取得済み
-		// IPアドレスはAPIから取得するため、初期値は「-」とする
-		vm := VMInfo{
-			VMID:   dbVm.ProxmoxVMID,
-			Status: dbVm.Status,
-			IP:     "-",
-		}
+    results := make([]result, len(dbVms))
+    var wg sync.WaitGroup
 
-		if strings.EqualFold(dbVm.Status, "completed") {
-			if status, err := getProxmoxVMStatus(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
-				vm.Status = status
-			} else {
-				log.Printf("warning: failed to resolve Proxmox runtime status for VM %d on node %s: %v", dbVm.ProxmoxVMID, dbVm.NodeName, err)
-			}
-		}
+    // タイムアウト付きコンテキスト（全体で5秒）
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
 
-		// その他のリソースはtfstateから取得する
-		tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
-		b, err := os.ReadFile(tfstatePath)
-		if err != nil {
-			// tfstate が読み込めない場合、そのVMは返さない (情報が不完全)
-			log.Printf("warning: terraform.tfstate not found for VM %d: %v", dbVm.ProxmoxVMID, err)
-			continue
-		}
+    for i, dbVm := range dbVms {
+        wg.Add(1)
+        go func(i int, dbVm *VM) {
+            defer wg.Done()
 
-		var state TFState
-		if err := json.Unmarshal(b, &state); err != nil {
-			// JSON のアンマーシャルに失敗した場合、そのVMは返さない
-			log.Printf("warning: failed to unmarshal terraform.tfstate for VM %d: %v", dbVm.ProxmoxVMID, err)
-			continue
-		}
+            vm := VMInfo{
+                VMID:   dbVm.ProxmoxVMID,
+                Status: dbVm.Status,
+                IP:     "-",
+            }
 
-		found := false
-		for _, res := range state.Resources {
-			if res.Type != "proxmox_virtual_environment_vm" || len(res.Instances) == 0 {
-				continue
-			}
+            // tfstate読み込み（ファイルIOなので並列化の恩恵大）
+            tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
+            b, err := os.ReadFile(tfstatePath)
+            if err != nil {
+                log.Printf("warning: terraform.tfstate not found for VM %d: %v", dbVm.ProxmoxVMID, err)
+                return
+            }
+            var state TFState
+            if err := json.Unmarshal(b, &state); err != nil {
+                log.Printf("warning: failed to unmarshal terraform.tfstate for VM %d: %v", dbVm.ProxmoxVMID, err)
+                return
+            }
 
-			attr := res.Instances[0].Attributes
-			vm.Name = parseString(attr["name"])
-			if parsed, ok := parseInt(attr["vm_id"]); ok {
-				vm.VMID = parsed
-			}
-			if cores, ok := parseFirstMapInt(attr["cpu"], "cores"); ok {
-				vm.Cores = cores
-			}
-			if mem, ok := parseFirstMapInt(attr["memory"], "dedicated"); ok {
-				vm.Memory = mem
-			}
-			if hdd, ok := parseFirstMapInt(attr["disk"], "size"); ok {
-				vm.Hdd = hdd
-			}
+            found := false
+            for _, res := range state.Resources {
+                if res.Type != "proxmox_virtual_environment_vm" || len(res.Instances) == 0 {
+                    continue
+                }
+                attr := res.Instances[0].Attributes
+                vm.Name = parseString(attr["name"])
+                if parsed, ok := parseInt(attr["vm_id"]); ok {
+                    vm.VMID = parsed
+                }
+                if cores, ok := parseFirstMapInt(attr["cpu"], "cores"); ok {
+                    vm.Cores = cores
+                }
+                if mem, ok := parseFirstMapInt(attr["memory"], "dedicated"); ok {
+                    vm.Memory = mem
+                }
+                if hdd, ok := parseFirstMapInt(attr["disk"], "size"); ok {
+                    vm.Hdd = hdd
+                }
 
-			// リアルタイムのIPアドレスをProxmox APIから取得
-			if apiIP, err := getProxmoxVMIP(context.Background(), dbVm.NodeName, dbVm.ProxmoxVMID); err == nil && apiIP != "" {
-				vm.IP = apiIP
-			}
+                if strings.EqualFold(dbVm.Status, "completed") {
+                    if info, err := getProxmoxVMInfo(ctx, dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
+						vm.Status = info.Status
+						vm.IP = info.IP
+					} else {
+						log.Printf("warning: failed to get proxmox vm info for VM %d: %v", dbVm.ProxmoxVMID, err)
+					}
+                }
 
-			// 必須情報が全て揃っているかチェック (Name, Memory, Cores, Hdd)
-			// IP は任意情報なので、「-」でも OK
-			if vm.Name != "" && vm.Memory > 0 && vm.Cores > 0 && vm.Hdd > 0 {
-				vms = append(vms, vm)
-			} else {
-				log.Printf("warning: VM %d has incomplete information: Name=%s, Memory=%d, Cores=%d, Hdd=%d",
-					dbVm.ProxmoxVMID, vm.Name, vm.Memory, vm.Cores, vm.Hdd)
-			}
-			found = true
-		}
+                if vm.Name != "" && vm.Memory > 0 && vm.Cores > 0 && vm.Hdd > 0 {
+                    results[i] = result{vm: vm, ok: true}
+                } else {
+                    log.Printf("warning: VM %d has incomplete information: Name=%s, Memory=%d, Cores=%d, Hdd=%d",
+                        dbVm.ProxmoxVMID, vm.Name, vm.Memory, vm.Cores, vm.Hdd)
+                }
+                found = true
+            }
+            if !found {
+                log.Printf("warning: proxmox_virtual_environment_vm resource not found in terraform.tfstate for VM %d", dbVm.ProxmoxVMID)
+            }
+        }(i, dbVm)
+    }
 
-		if !found {
-			// tfstate から VM リソースが見つからない場合、そのVMは返さない
-			log.Printf("warning: proxmox_virtual_environment_vm resource not found in terraform.tfstate for VM %d", dbVm.ProxmoxVMID)
-		}
-	}
+    wg.Wait()
 
-	return vms, nil
+    // 順序を保ってフィルタ
+    var vms []VMInfo
+    for _, r := range results {
+        if r.ok {
+            vms = append(vms, r.vm)
+        }
+    }
+    return vms, nil
+}
+
+type ProxmoxVMInfo struct {
+    Status string
+    IP     string
+}
+
+func getProxmoxVMInfo(ctx context.Context, nodeName string, vmid int) (ProxmoxVMInfo, error) {
+    client, err := getProxmoxClient()
+    if err != nil {
+        return ProxmoxVMInfo{}, err
+    }
+
+    node, err := client.Node(ctx, nodeName)
+    if err != nil {
+        return ProxmoxVMInfo{}, fmt.Errorf("failed to get node: %w", err)
+    }
+
+    vm, err := node.VirtualMachine(ctx, vmid)
+    if err != nil {
+        return ProxmoxVMInfo{}, fmt.Errorf("failed to get vm: %w", err)
+    }
+
+    info := ProxmoxVMInfo{
+        Status: string(vm.Status),
+        IP:     "-",
+    }
+
+    // IPはベストエフォート（失敗してもStatusは返す）
+    ifaces, err := vm.AgentGetNetworkIFaces(ctx)
+    if err == nil {
+        for _, iface := range ifaces {
+            for _, addr := range iface.IPAddresses {
+                if addr.IPAddressType != "ipv4" || addr.IPAddress == "127.0.0.1" {
+                    continue
+                }
+                info.IP = addr.IPAddress
+                goto done
+            }
+        }
+    }
+done:
+    return info, nil
 }
 
 func parseString(value interface{}) string {

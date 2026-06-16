@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	goProxmox "github.com/luthermonson/go-proxmox"
 )
@@ -18,6 +19,20 @@ type ProxmoxConfig struct {
 	Username           string
 	Password           string
 	InsecureSkipVerify bool
+}
+
+// クライアントをシングルトンにする
+var (
+    proxmoxClient     *goProxmox.Client
+    proxmoxClientOnce sync.Once
+    proxmoxClientErr  error
+)
+
+func getProxmoxClient() (*goProxmox.Client, error) {
+    proxmoxClientOnce.Do(func() {
+        proxmoxClient, proxmoxClientErr = newGoProxmoxClient()
+    })
+    return proxmoxClient, proxmoxClientErr
 }
 
 func newGoProxmoxClient() (*goProxmox.Client, error) {
@@ -50,67 +65,8 @@ func newGoProxmoxClient() (*goProxmox.Client, error) {
 	return client, nil
 }
 
-func getProxmoxVMStatus(ctx context.Context, nodeName string, vmid int) (string, error) {
-	client, err := newGoProxmoxClient()
-	if err != nil {
-		return "", err
-	}
-
-	node, err := client.Node(ctx, nodeName)
-	if err != nil {
-		return "", fmt.Errorf("failed to get proxmox node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return "", fmt.Errorf("failed to get proxmox vm: %w", err)
-	}
-
-	return string(vm.Status), nil
-}
-
-func getProxmoxVMIP(ctx context.Context, nodeName string, vmid int) (string, error) {
-	client, err := newGoProxmoxClient()
-	if err != nil {
-		return "", err
-	}
-
-	node, err := client.Node(ctx, nodeName)
-	if err != nil {
-		return "", fmt.Errorf("failed to get proxmox node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return "", fmt.Errorf("failed to get proxmox vm: %w", err)
-	}
-
-	ifaces, err := vm.AgentGetNetworkIFaces(ctx)
-	if err != nil {
-		if strings.Contains(err.Error(), "guest agent is not running") || strings.Contains(err.Error(), "vm is not running") {
-			return "", nil
-		}
-		return "", fmt.Errorf("failed to get proxmox vm agent network interfaces: %w", err)
-	}
-
-	for _, iface := range ifaces {
-		for _, addr := range iface.IPAddresses {
-			if addr.IPAddressType != "ipv4" {
-				continue
-			}
-			ip := addr.IPAddress
-			if ip == "127.0.0.1" {
-				continue
-			}
-			return ip, nil
-		}
-	}
-
-	return "", nil
-}
-
 func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
-	client, err := newGoProxmoxClient()
+	client, err := getProxmoxClient()
 	if err != nil {
 		return err
 	}
@@ -150,7 +106,7 @@ func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 // startProxmoxVM は Proxmox 上の VM を起動します（非同期）
 func startProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 	go func() {
-		client, err := newGoProxmoxClient()
+		client, err := getProxmoxClient()
 		if err != nil {
 			fmt.Printf("Failed to create proxmox client: %v\n", err)
 			return
@@ -185,7 +141,7 @@ func startProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 // stopProxmoxVM は Proxmox 上の VM を停止します（非同期）
 func stopProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 	go func() {
-		client, err := newGoProxmoxClient()
+		client, err := getProxmoxClient()
 		if err != nil {
 			fmt.Printf("Failed to create proxmox client: %v\n", err)
 			return

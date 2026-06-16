@@ -199,8 +199,8 @@ EOT
 	}	
 
 	if job.VMID != 0 {
-		if ip, err := getProxmoxVMIP(context.Background(), job.NodeName, job.VMID); err == nil && ip != "" {
-			job.IP = ip
+		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
+			job.IP = vm.IP
 		}
 	}
 	job.Status = "done"
@@ -868,8 +868,8 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
-	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, vmid)
-	if err != nil || ip == "" {
+	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vmid)
+	if err != nil || info.IP == "-" {
 		http.Error(w, "VM IP not available", http.StatusInternalServerError)
 		return
 	}
@@ -881,7 +881,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	privKeyPath := filepath.Join("cert", "agent_id_rsa")
 
-	sshClient, err := createSSHClient(ip, agentUser, privKeyPath)
+	sshClient, err := createSSHClient(info.IP, agentUser, privKeyPath)
 	if err != nil {
 		log.Printf("createSSHClient: %v", err)
 		http.Error(w, "ssh connection failed", http.StatusInternalServerError)

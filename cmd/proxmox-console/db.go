@@ -28,7 +28,7 @@ func initDB() error {
 		port = "5432"
 	}
 	if user == "" {
-		user = "u22"
+		user = "pguser"
 	}
 	if password == "" {
 		password = "secret"

@@ -30,44 +30,51 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	// Kratos からユーザーIDを取得
 	kratosUserID, err := getKratosUserIDFromRequest(httpreq)
 	if err != nil {
-		failJob(jobID, "Error getting Kratos user ID:", err); return
+		failJob(jobID, "Error getting Kratos user ID:", err)
+		return
 	}
 
 	// ---------------- バリデーション----------------
 	// --- OS バリデーション ---
-    var selectedOS *OSOption
-    for i := range SettingsConf.OS {
-        if SettingsConf.OS[i].ID == req.OS {
-            selectedOS = &SettingsConf.OS[i]
-            break
-        }
-    }
-    if selectedOS == nil {
-        failJob(jobID, "Requested value is invalid【OS】 :", err); return
-    }
+	var selectedOS *OSOption
+	for i := range SettingsConf.OS {
+		if SettingsConf.OS[i].ID == req.OS {
+			selectedOS = &SettingsConf.OS[i]
+			break
+		}
+	}
+	if selectedOS == nil {
+		failJob(jobID, "Requested value is invalid【OS】 :", err)
+		return
+	}
 
-    // --- リソース範囲バリデーション ---
-    res := SettingsConf.Resources
-    if req.CPU < res.CPU.Min || req.CPU > res.CPU.Max {
-        failJob(jobID, "Requested value is invalid【CPU】 :", err); return
-    }
-    if req.Memory < res.Memory.Min || req.Memory > res.Memory.Max {
-        failJob(jobID, "Requested value is invalid【Memory】 :", err); return
-    }
-    if req.HDD < res.HDD.Min || req.HDD > res.HDD.Max {
-		failJob(jobID, "Requested value is invalid【HDD】 :", err); return
-    }
+	// --- リソース範囲バリデーション ---
+	res := SettingsConf.Resources
+	if req.CPU < res.CPU.Min || req.CPU > res.CPU.Max {
+		failJob(jobID, "Requested value is invalid【CPU】 :", err)
+		return
+	}
+	if req.Memory < res.Memory.Min || req.Memory > res.Memory.Max {
+		failJob(jobID, "Requested value is invalid【Memory】 :", err)
+		return
+	}
+	if req.HDD < res.HDD.Min || req.HDD > res.HDD.Max {
+		failJob(jobID, "Requested value is invalid【HDD】 :", err)
+		return
+	}
 
 	// DB からユーザーIDを取得または作成
 	dbUserID, err := getDatabaseUserID(kratosUserID)
 	if err != nil {
-		failJob(jobID, "Error getting database user ID:", err); return
+		failJob(jobID, "Error getting database user ID:", err)
+		return
 	}
 
 	// VMリクエストのハッシュを計算
 	vmhash, err := hashRequest(req)
 	if err != nil {
-		failJob(jobID, "Error hashing request:", err); return
+		failJob(jobID, "Error hashing request:", err)
+		return
 	}
 
 	// ユーザディレクトリ配下に
@@ -88,7 +95,8 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 
 	userPrivkey, userPubkey, err := generateSSHKeyPair()
 	if err != nil {
-		failJob(jobID, "Error creating key:", err); return
+		failJob(jobID, "Error creating key:", err)
+		return
 	}
 
 	agentUser := SettingsConf.Agent.User
@@ -98,7 +106,8 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 
 	agentPubkey := strings.TrimSpace(SettingsConf.Agent.PublicKey)
 	if agentPubkey == "" {
-		failJob(jobID, "Error missing agent public key in settings", err); return
+		failJob(jobID, "Error missing agent public key in settings", err)
+		return
 	}
 
 	tfvars := fmt.Sprintf(`
@@ -122,14 +131,16 @@ EOT
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
 	// ルートの共通テンプレートを各VMワークディレクトリにリンク
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {		
-		failJob(jobID, "Error linking Terraform templates:", err); return
+	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+		failJob(jobID, "Error linking Terraform templates:", err)
+		return
 	}
 
 	// Terraform実行
 	tf, err := tfexec.NewTerraform(workdir, "terraform")
 	if err != nil {
-		failJob(jobID, "Error creating Terraform executor:", err); return
+		failJob(jobID, "Error creating Terraform executor:", err)
+		return
 	}
 	tf.SetStdout(logFile)
 	tf.SetStderr(logFile)
@@ -138,7 +149,8 @@ EOT
 
 	// init
 	if err := tf.Init(ctx, tfexec.Upgrade(true)); err != nil {
-		failJob(jobID, "Error during initialization:", err); return
+		failJob(jobID, "Error during initialization:", err)
+		return
 	}
 
 	job.Status = "running(apply)"
@@ -148,19 +160,22 @@ EOT
 	if err := tf.Apply(ctx,
 		tfexec.VarFile("runtime.tfvars"),
 	); err != nil {
-		failJob(jobID, "Error applying Terraform configuration:", err); return
+		failJob(jobID, "Error applying Terraform configuration:", err)
+		return
 	}
 
 	// Terraform state から VM ID とノード名を取得
 	vmID, nodeName, err := getVMIDAndNode(workdir)
 	if err != nil {
-		failJob(jobID, "Error getting VM ID and node:", err); return
+		failJob(jobID, "Error getting VM ID and node:", err)
+		return
 	}
 
 	// DB に VM を記録
 	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
 	if err != nil {
-		failJob(jobID, "Error creating VM in database:", err); return
+		failJob(jobID, "Error creating VM in database:", err)
+		return
 	}
 
 	// VM の秘密鍵を一時的にワークディレクトリに保存
@@ -174,7 +189,8 @@ EOT
 
 	// 完了後は DB で completed に変更してからログを破棄する
 	if err := updateVMStatus(createdVM.ID, "completed"); err != nil {
-		failJob(jobID, "Error updating VM status in database:", err); return
+		failJob(jobID, "Error updating VM status in database:", err)
+		return
 	}
 
 	if job.VMID != 0 {
@@ -191,19 +207,18 @@ EOT
 }
 
 func failJob(jobID, msg string, args ...any) {
-    fmt.Printf(msg+"\n", args...)
-    jobAny, _ := jobs.Load(jobID)
-    if job, ok := jobAny.(*Job); ok {
-        job.Status = "error"
-        jobs.Store(jobID, job)
-    }
+	fmt.Printf(msg+"\n", args...)
+	jobAny, _ := jobs.Load(jobID)
+	if job, ok := jobAny.(*Job); ok {
+		job.Status = "error"
+		jobs.Store(jobID, job)
+	}
 }
 
 func ensureTerraformTemplateLinks(workdir string) error {
 	templateFiles := []string{
 		"provider.tf",
 		"variables.tf",
-		"proxmox.auto.tfvars",
 		"snippets.tf",
 		"vm.tf",
 		"cloud-config.yaml",
@@ -273,7 +288,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		HDD:        atoiSafe(r.FormValue("hdd")),
 		Servername: r.FormValue("servername"),
 		Username:   r.FormValue("username"),
-		OS:       r.FormValue("os"),
+		OS:         r.FormValue("os"),
 	}
 
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
@@ -777,26 +792,27 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type OSOptionPublic struct {
-    ID    string `json:"id"`
-    Label string `json:"label"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
 }
+
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	
+
 	// 内部で使用するOSテンプレートID以外を返す
 	osList := make([]OSOptionPublic, len(SettingsConf.OS))
-    for i, o := range SettingsConf.OS {
-        osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
-    }
+	for i, o := range SettingsConf.OS {
+		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
+	}
 
-    json.NewEncoder(w).Encode(map[string]any{
-        "cpu":    SettingsConf.Resources.CPU,
-        "memory": SettingsConf.Resources.Memory,
-        "hdd":    SettingsConf.Resources.HDD,
-        "os":     osList,
-    })
+	json.NewEncoder(w).Encode(map[string]any{
+		"cpu":    SettingsConf.Resources.CPU,
+		"memory": SettingsConf.Resources.Memory,
+		"hdd":    SettingsConf.Resources.HDD,
+		"os":     osList,
+	})
 }
 
 type flushWriter struct {

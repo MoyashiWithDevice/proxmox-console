@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"fmt"
@@ -81,16 +80,12 @@ func loadConfig() error {
 
 	// TF_VAR_ プレフィックスの環境変数を Terraform と共通で使用
 	rawEndpoint := os.Getenv("PROXMOX_VE_ENDPOINT")
-	if rawEndpoint == "" {
-		return fmt.Errorf("PROXMOX_VE_ENDPOINT is not set")
-	}
-	u, err := url.Parse(rawEndpoint)
+	apiURL, err := url.JoinPath(rawEndpoint, "api2/json")
 	if err != nil {
-		return fmt.Errorf("failed to parse endpoint url: %w", err)
+		return fmt.Errorf("failed to build endpoint url: %w", err)
 	}
-	// パスを安全に結合し、URL全体を文字列として取得
-	u.Path = path.Join(u.Path, "/api2/json")
-	AppConfig.Proxmox.APIURL = u.String() // u.Path ではなく u.String() に変更
+
+	AppConfig.Proxmox.APIURL = apiURL
 	fmt.Printf("APIURL = %s\n", AppConfig.Proxmox.APIURL)
 
 	parts := strings.SplitN(os.Getenv("PROXMOX_VE_API_TOKEN"), "=", 2)

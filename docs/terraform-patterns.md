@@ -25,7 +25,7 @@ os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
 // 3. Terraformファイルをコピー
 copyFile("terraform/provider.tf", filepath.Join(workdir, "provider.tf"))
 copyFile("terraform/variables.tf", filepath.Join(workdir, "variables.tf"))
-copyFile("terraform/proxmox.auto.tfvars", filepath.Join(workdir, "proxmox.auto.tfvars"))
+// Proxmox認証情報はルート.envのTF_VAR_環境変数をTerraformへ引き継ぐ
 copyFile("terraform/snippets.tf", filepath.Join(workdir, "snippets.tf"))
 copyFile("terraform/vm.tf", filepath.Join(workdir, "vm.tf"))
 copyFile("terraform/cloud-config.yaml", filepath.Join(workdir, "cloud-config.yaml"))

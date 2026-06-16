@@ -127,7 +127,7 @@ PUT /api2/json/access/permissions
 
 ## 3. 当プロジェクトでの推奨構成
 
-現在のTerraform構成では `.env` / `proxmox.auto.tfvars` に認証情報を格納:
+現在のTerraform構成ではルート `.env` の `TF_VAR_` 環境変数に認証情報を格納し、`proxmox.auto.tfvars` は使用しません:
 
 ```hcl
 # terraform/provider.tf

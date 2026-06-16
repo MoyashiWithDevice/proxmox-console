@@ -16,7 +16,7 @@ func getKratosUserIDFromRequest(r *http.Request) (string, error) {
 	}
 
 	client := &http.Client{}
-	url := AppConfig.Kratos.APIURL + "/sessions/whoami"
+	url := AppConfig.Kratos.BROWSERURL + "/sessions/whoami"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err

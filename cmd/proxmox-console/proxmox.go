@@ -22,7 +22,7 @@ type ProxmoxConfig struct {
 
 func newGoProxmoxClient() (*goProxmox.Client, error) {
 	if AppConfig.Proxmox.APIURL == "" {
-		return nil, errors.New("missing TF_VAR_proxmox_api_url")
+		return nil, errors.New("missing TF_VAR_proxmox_endpoint")
 	}
 
 	httpClient := &http.Client{
@@ -38,7 +38,10 @@ func newGoProxmoxClient() (*goProxmox.Client, error) {
 	if AppConfig.Proxmox.APITokenID != "" && AppConfig.Proxmox.APITokenSecret != "" {
 		opts = append(opts, goProxmox.WithAPIToken(AppConfig.Proxmox.APITokenID, AppConfig.Proxmox.APITokenSecret))
 	} else if AppConfig.Proxmox.Username != "" && AppConfig.Proxmox.Password != "" {
-		opts = append(opts, goProxmox.WithLogins(AppConfig.Proxmox.Username, AppConfig.Proxmox.Password))
+		opts = append(opts, goProxmox.WithCredentials(&goProxmox.Credentials{
+			Username: AppConfig.Proxmox.Username,
+			Password: AppConfig.Proxmox.Password,
+		}))
 	} else {
 		return nil, errors.New("missing Proxmox authentication: set TF_VAR_proxmox_api_token_id/proxmox_api_token_secret or TF_VAR_proxmox_username/proxmox_password")
 	}

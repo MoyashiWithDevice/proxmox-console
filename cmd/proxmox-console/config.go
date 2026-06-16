@@ -8,9 +8,11 @@ import (
 	"encoding/pem"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
-
+	"fmt"
+	"net/url"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -20,10 +22,10 @@ type ResourceLimit struct {
 	Step int `json:"step,omitempty"`
 }
 type OSOption struct {
-    ID          string `json:"id"`
-    Label       string `json:"label"`
-    // Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
-    TemplateID  int    `json:"-"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	// Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
+	TemplateID int `json:"-"`
 }
 type ResourceConstraints struct {
 	CPU    ResourceLimit `json:"cpu"`
@@ -44,7 +46,7 @@ type SettingsConfig struct {
 
 type Config struct {
 	Kratos struct {
-		APIURL string // サーバー間通信用 (例: http://kratos:4433)
+		BROWSERURL string // サーバー間通信用 (例: http://kratos:4433)
 		UIURL  string
 	}
 
@@ -70,24 +72,42 @@ func mustGetenv(key string) string {
 	return v
 }
 
-func loadConfig() {
+func loadConfig() error {
 	AppConfig = Config{}
 
-	AppConfig.Kratos.APIURL = mustGetenv("KRATOS_API_URL")
+	AppConfig.Kratos.BROWSERURL = mustGetenv("KRATOS_BROWSER_URL")
 	AppConfig.Kratos.UIURL = mustGetenv("KRATOS_UI_URL")
 	AppConfig.App.URL = mustGetenv("APP_URL")
 
 	// TF_VAR_ プレフィックスの環境変数を Terraform と共通で使用
-	AppConfig.Proxmox.APIURL = os.Getenv("TF_VAR_proxmox_api_url")
-	AppConfig.Proxmox.APITokenID = os.Getenv("TF_VAR_proxmox_api_token_id")
-	AppConfig.Proxmox.APITokenSecret = os.Getenv("TF_VAR_proxmox_api_token_secret")
-	AppConfig.Proxmox.Username = os.Getenv("TF_VAR_proxmox_username")
-	AppConfig.Proxmox.Password = os.Getenv("TF_VAR_proxmox_password")
+	rawEndpoint := os.Getenv("PROXMOX_VE_ENDPOINT")
+	if rawEndpoint == "" {
+		return fmt.Errorf("PROXMOX_VE_ENDPOINT is not set")
+	}
+	u, err := url.Parse(rawEndpoint)
+	if err != nil {
+		return fmt.Errorf("failed to parse endpoint url: %w", err)
+	}
+	// パスを安全に結合し、URL全体を文字列として取得
+	u.Path = path.Join(u.Path, "/api2/json")
+	AppConfig.Proxmox.APIURL = u.String() // u.Path ではなく u.String() に変更
+	fmt.Printf("APIURL = %s\n", AppConfig.Proxmox.APIURL)
+
+	parts := strings.SplitN(os.Getenv("PROXMOX_VE_API_TOKEN"), "=", 2)
+	if len(parts) == 2 {
+		AppConfig.Proxmox.APITokenID     = parts[0]
+		AppConfig.Proxmox.APITokenSecret = parts[1]
+	}
+
+	AppConfig.Proxmox.Username = os.Getenv("PROXMOX_VE_USERNAME")
+	AppConfig.Proxmox.Password = os.Getenv("PROXMOX_VE_PASSWORD")
 	AppConfig.Proxmox.InsecureSkipVerify = strings.EqualFold(os.Getenv("TF_VAR_proxmox_insecure"), "true")
 
 	// Load settings from setting.json
 	loadSettingsConfig()
 	loadAgentKeys()
+
+	return nil
 }
 
 func loadSettingsConfig() {
@@ -98,7 +118,7 @@ func loadSettingsConfig() {
 			Memory: ResourceLimit{Min: 512, Max: 4096, Step: 512},
 			HDD:    ResourceLimit{Min: 1, Max: 64, Step: 1},
 		},
-		OS: []OSOption {
+		OS: []OSOption{
 			{ID: "ubuntu-24.04", Label: "Ubuntu 24.04 LTS", TemplateID: 9000},
 		},
 		Agent: AgentConfig{

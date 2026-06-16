@@ -193,6 +193,11 @@ EOT
 		return
 	}
 
+	// TODO: ログの破棄と/var/lib/vz/snippetsフォルダ内のスニペットファイルの削除
+	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
+		fmt.Println("Error removing log file:", err)
+	}	
+
 	if job.VMID != 0 {
 		if ip, err := getProxmoxVMIP(context.Background(), job.NodeName, job.VMID); err == nil && ip != "" {
 			job.IP = ip
@@ -200,10 +205,6 @@ EOT
 	}
 	job.Status = "done"
 	jobs.Store(jobID, job)
-
-	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
-		fmt.Println("Error removing log file:", err)
-	}
 }
 
 func failJob(jobID, msg string, args ...any) {

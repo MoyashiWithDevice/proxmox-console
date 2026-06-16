@@ -84,9 +84,7 @@ func loadConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to build endpoint url: %w", err)
 	}
-
 	AppConfig.Proxmox.APIURL = apiURL
-	fmt.Printf("APIURL = %s\n", AppConfig.Proxmox.APIURL)
 
 	parts := strings.SplitN(os.Getenv("PROXMOX_VE_API_TOKEN"), "=", 2)
 	if len(parts) == 2 {

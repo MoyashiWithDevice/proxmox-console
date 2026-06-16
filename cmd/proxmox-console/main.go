@@ -24,7 +24,10 @@ var PORT string
 func main() {
 	godotenv.Load()
 	PORT = os.Getenv("PORT")
-	loadConfig()
+	err := loadConfig()
+	if err != nil{
+		log.Fatalf("Failed to load config: %v", err)
+	}
 
 	// データベース初期化
 	if err := initDB(); err != nil {

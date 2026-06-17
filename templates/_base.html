@@ -1,0 +1,39 @@
+{{- /* _base.html - Base HTML skeleton with blocks for page content */ -}}
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{block "title" .}}Proxmox Console{{end}}</title>
+<link rel="stylesheet" href="/css/reset.css">
+{{block "styles" .}}{{end}}
+</head>
+<body>
+{{block "content" .}}{{end}}
+{{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}
+{{define "page-header"}}
+<div class="page-header" style="display:flex;align-items:center;padding:0 32px;height:52px;border-bottom:1px solid #111;flex-shrink:0">
+<a href="/" style="display:flex;align-items:center;gap:10px;text-decoration:none">
+<span style="font-size:14px;font-weight:600;color:#fff;letter-spacing:-0.01em">Proxmox Console</span>
+<span style="font-size:11px;color:#333;margin-left:2px">v1.0</span>
+</a>
+<div style="margin-left:auto">
+<button aria-label="Logout" onclick="window.location.href='/logout'" style="background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px;color:#444;font-size:12px">{{template "icon-logOut" .}} Logout</button>
+</div>
+</div>
+{{end}}
+{{define "dash-header"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+<div style="display:flex;align-items:center;gap:10px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M5 4H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M5 14H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h1m6 0h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-2"/></svg>
+<h1 style="font-size:20px;font-weight:700;color:#fff">Proxmox Console</h1>
+</div>
+<div style="display:flex;align-items:center;gap:16px">
+<button onclick="window.location.href='/logout'" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px">{{template "icon-logOut" .}} Log Out</button>
+</div>
+</div>
+{{end}}

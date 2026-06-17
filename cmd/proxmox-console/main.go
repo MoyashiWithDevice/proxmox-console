@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -35,6 +36,15 @@ func main() {
 	}
 	defer closeDB()
 
+	// テンプレートパース
+	tmpl := template.Must(template.ParseGlob("templates/*.html"))
+
+	// 静的CSSファイルは認証なしで配信
+	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./static/css"))))
+
+	// 静的JSファイルは認証なしで配信
+	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js"))))
+
 	// エラーページは認証なしで配信
 	http.HandleFunc("/error.html", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/error.html")
@@ -45,7 +55,21 @@ func main() {
 
 		// ルートは dashboard.html を表示
 		if r.URL.Path == "/" {
-			http.ServeFile(w, r, "./static/dashboard.html")
+			tmpl.ExecuteTemplate(w, "dashboard.html", nil)
+			return
+		}
+
+		// 新しいテンプレートルート
+		if r.URL.Path == "/vm" || r.URL.Path == "/info" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
+			tmpl.ExecuteTemplate(w, r.URL.Path[1:]+".html", nil)
+			return
+		}
+
+		// Terminal テンプレート（vmid パラメータ付き）
+		if r.URL.Path == "/terminal" {
+			tmpl.ExecuteTemplate(w, "terminal.html", map[string]string{
+				"VMID": r.URL.Query().Get("vmid"),
+			})
 			return
 		}
 

@@ -1,0 +1,57 @@
+{{define "title"}}Proxmox Console - Resource Selection{{end}}
+{{define "styles"}}<link rel="stylesheet" href="/css/resource.css">{{end}}
+{{define "content"}}
+<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column">
+  {{template "page-header" .}}
+  <div style="display:flex;flex-direction:column;flex:1;align-items:center;padding:0 20px">
+    <div style="margin-top:64px;width:100%;max-width:600px">
+      {{template "dash-header" .}}
+      <div style="background:#111;border:1px solid #1a1a1a;border-radius:16px;padding:32px">
+        <div style="margin-bottom:28px">
+          <div style="display:flex;align-items:center;gap:10px">
+            {{template "icon-hardDrive" .}}
+            <div style="font-size:18px;font-weight:600">Resource Selection</div>
+          </div>
+        </div>
+        <div id="resource-area">
+          <div style="margin-bottom:28px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:6px">
+                {{template "icon-hardDrive" .}}
+                <span style="font-size:14px;color:#ddd">HDD</span>
+              </div>
+              <span id="hdd-value" style="font-size:14px;color:#aaa"></span>
+            </div>
+            <input id="hdd-slider" type="range" min="20" max="200" step="5" value="50" style="width:100%">
+          </div>
+          <div style="margin-bottom:28px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:6px">
+                {{template "icon-cpu" .}}
+                <span style="font-size:14px;color:#ddd">CPU</span>
+              </div>
+              <span id="cpu-value" style="font-size:14px;color:#aaa"></span>
+            </div>
+            <input id="cpu-slider" type="range" min="1" max="32" step="1" value="4" style="width:100%">
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:6px">
+                {{template "icon-memoryStick" .}}
+                <span style="font-size:14px;color:#ddd">Memory</span>
+              </div>
+              <span id="memory-value" style="font-size:14px;color:#aaa"></span>
+            </div>
+            <input id="memory-slider" type="range" min="1" max="64" step="1" value="8" style="width:100%">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{define "scripts"}}
+<script src="/js/common.js"></script>
+<script src="/js/resource.js"></script>
+{{end}}
+{{template "base" .}}

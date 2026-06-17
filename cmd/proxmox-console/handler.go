@@ -1027,12 +1027,11 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct{
-		vmid  int
+		vmid  string
 		state string
-	}{
-		vmid: r.FormValue("vmid")
-		state: r.FormValue("state")
 	}
+	req.vmid = r.FormValue("vmid")
+	req.state = r.FormValue("state")
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -1040,9 +1039,15 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.vmid == 0 {
+	if req.vmid == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
+		return
+	}
+	vmidInt, convErr := strconv.Atoi(req.vmid)
+	if convErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid vmid"})
 		return
 	}
 	if req.state != "start" && req.state != "stop"{
@@ -1058,7 +1063,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.vmid)
+	vm, err := getVMByProxmoxID(vmidInt)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
@@ -1070,20 +1075,18 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	if (req.state == "start"){
-		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
-	}else if(req.state == "stop"){
-		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+	if req.state == "start" {
+		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
+	} else if req.state == "stop" {
+		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
 	}
 
 	if err != nil{
 		w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
-	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

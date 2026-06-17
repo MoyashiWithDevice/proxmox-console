@@ -193,17 +193,18 @@ EOT
 		return
 	}
 
+	// TODO: ログの破棄と/var/lib/vz/snippetsフォルダ内のスニペットファイルの削除
+	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
+		fmt.Println("Error removing log file:", err)
+	}	
+
 	if job.VMID != 0 {
-		if ip, err := getProxmoxVMIP(context.Background(), job.NodeName, job.VMID); err == nil && ip != "" {
-			job.IP = ip
+		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
+			job.IP = vm.IP
 		}
 	}
 	job.Status = "done"
 	jobs.Store(jobID, job)
-
-	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
-		fmt.Println("Error removing log file:", err)
-	}
 }
 
 func failJob(jobID, msg string, args ...any) {
@@ -867,8 +868,8 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
-	ip, err := getProxmoxVMIP(context.Background(), vm.NodeName, vmid)
-	if err != nil || ip == "" {
+	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vmid)
+	if err != nil || info.IP == "-" {
 		http.Error(w, "VM IP not available", http.StatusInternalServerError)
 		return
 	}
@@ -880,7 +881,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	privKeyPath := filepath.Join("cert", "agent_id_rsa")
 
-	sshClient, err := createSSHClient(ip, agentUser, privKeyPath)
+	sshClient, err := createSSHClient(info.IP, agentUser, privKeyPath)
 	if err != nil {
 		log.Printf("createSSHClient: %v", err)
 		http.Error(w, "ssh connection failed", http.StatusInternalServerError)
@@ -1010,8 +1011,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-// startVMHandler は VM を起動します
-func startVMHandler(w http.ResponseWriter, r *http.Request) {
+func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -1026,19 +1026,33 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		return
 	}
-
-	var req struct {
-		VMID int `json:"vmid"`
+	var req struct{
+		vmid  string
+		state string
 	}
+	req.vmid = r.FormValue("vmid")
+	req.state = r.FormValue("state")
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
 		return
 	}
 
-	if req.VMID == 0 {
+	if req.vmid == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
+		return
+	}
+	vmidInt, convErr := strconv.Atoi(req.vmid)
+	if convErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid vmid"})
+		return
+	}
+	if req.state != "start" && req.state != "stop"{
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid state"})
 		return
 	}
 
@@ -1049,7 +1063,7 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID)
+	vm, err := getVMByProxmoxID(vmidInt)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
@@ -1060,74 +1074,19 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
 		return
 	}
+	
+	if req.state == "start" {
+		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
+	} else if req.state == "stop" {
+		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
+	}
 
-	if err := startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+	if err != nil{
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
-}
-
-// stopVMHandler は VM を停止します
-func stopVMHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
-		return
-	}
-
-	var req struct {
-		VMID int `json:"vmid"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
-		return
-	}
-
-	if req.VMID == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
-		return
-	}
-
-	dbUserID, err := getDatabaseUserID(userID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "internal"})
-		return
-	}
-
-	vm, err := getVMByProxmoxID(req.VMID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
-		return
-	}
-	if vm.UserID != dbUserID {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
-		return
-	}
-
-	if err := stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

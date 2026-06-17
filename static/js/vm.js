@@ -89,7 +89,7 @@ function renderMain() {
 function renderJobProgress() {
   var html = '<div style="background:#111;border:1px solid #1a1a1a;border-radius:4;padding:24">';
   html += '<div style="display:flex;align-items:center;gap:10;margin-bottom:20"><span style="font-size:10;color:#666;text-transform:uppercase;letter-spacing:0.08em;font-weight:600">Status</span> ' + badgeHTML(_s) + '</div>';
-  html += '<div id="job-log" style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:4;padding:16;height:300;white-space:pre-wrap;font-family:Monaco,monospace;font-size:11;color:#888;overflow:auto;line-height:1.5">' + colorizeLog(_log) + '</div>';
+  html += '<div id="job-log" style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:4;padding:16;height:300;white-space:pre-wrap;font-family:Monaco,monospace;font-size:11;color:#888;overflow:auto;line-height:1.5">' + colorizeTerraformLog(_log) + '</div>';
   if (_jvmid && _s === "done") {
     html += '<div style="margin-top:20"><div style="color:#aaa;font-size:12;margin-bottom:8">VM created successfully. Redirecting in ' + _ri + ' seconds...</div>';
     html += '<div style="width:100%;height:2;background:#1a1a1a;border-radius:1;overflow:hidden"><div style="height:100%;background:#22c55e;width:' + (100 - (_ri/10*100)) + '%;transition:width 0.3s"></div></div></div>';
@@ -97,6 +97,50 @@ function renderJobProgress() {
   html += '</div>';
   return html;
 }
+
+function renderVMEditor() {
+}
+
+/* ===== Terraform log colorizer ===== */
+function colorizeTerraformLog(text) {
+  if (typeof text !== 'string') return String(text);
+  var s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  var lines = s.split('\n');
+  var out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var L = lines[i];
+    var c = null;
+
+    if (/^Error:/.test(L)) c = '#ef4444';
+    else if (/^\s*[+\-~] /.test(L) && !/^Error:/.test(L)) {
+      c = L.trim().charAt(0) === '+' ? '#22c55e' : L.trim().charAt(0) === '-' ? '#ef4444' : '#f59e0b';
+    }
+    else if (/^Plan: /.test(L)) {
+      L = L.replace(/(\d+) to add/g, '<span style="color:#22c55e">$1 to add</span>')
+           .replace(/(\d+) to (change|modify)/g, '<span style="color:#f59e0b">$1 to $2</span>')
+           .replace(/(\d+) to destroy/g, '<span style="color:#ef4444">$1 to destroy</span>');
+      out.push(L);
+      continue;
+    }
+    else if (/^- (Finding|Installing|Downloading)/.test(L)) c = '#60a5fa';
+    else if (/^(Initializing|Terraform has been successfully initialized)/.test(L)) c = '#22c55e';
+    else if (/Terraform (will perform|used the selected)/.test(L)) c = '#ccc';
+    else if (/Creation complete after/.test(L)) c = '#22c55e';
+    else if (/(Still creating|Still destroying)\.\.\./.test(L)) c = '#666';
+    else if (/Creating\.\.\./.test(L)) c = '#f59e0b';
+    else if (/^  # .+ (will be |must be)/.test(L)) c = '#bbb';
+    else if (/^\s+(with|on)\s/.test(L)) c = '#b91c1c';
+    else if (/^\s+\d+: /.test(L)) c = '#b91c1c';
+
+    if (c) {
+      out.push('<span style="color:' + c + '">' + L + '</span>');
+    } else {
+      out.push(L);
+    }
+  }
+  return out.join('\n');
+}
+/* ===== end colorizer ===== */
 
 function renderVMEditor() {
   var vm = _vm;
@@ -270,65 +314,51 @@ function init() {
     }, 1000);
   }
 
-/* ===== Terraform log colorizer ===== */
-function colorizeLog(text) {
-   if (typeof text !== 'string') return String(text);
-   var s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-   var lines = s.split('\n');
-   var out = [];
-   for (var i = 0; i < lines.length; i++) {
-     var L = lines[i];
-     var c = null;
-
-     // エラー行
-     if (/^Error:/.test(L)) c = '#ef4444';
-     // リソース作成/変更/削除行 (plan の + - ~)
-     else if (/^\s*[+\-~] /.test(L) && !/^Error:/.test(L)) {
-       c = L.trim().charAt(0) === '+' ? '#22c55e' : L.trim().charAt(0) === '-' ? '#ef4444' : '#f59e0b';
-     }
-     // Plan: サマリ行 (数値を色分け)
-     else if (/^Plan: /.test(L)) {
-       L = L.replace(/(\d+) to add/g, '<span style="color:#22c55e">$1 to add</span>')
-            .replace(/(\d+) to (change|modify)/g, '<span style="color:#f59e0b">$1 to $2</span>')
-            .replace(/(\d+) to destroy/g, '<span style="color:#ef4444">$1 to destroy</span>');
-       out.push(L);
-       continue;
-     }
-     // Changes to Outputs: の + 行
-     else if (/^\s{2}\+ /.test(L)) c = '#22c55e';
-     // Terraform init / provider 行
-     else if (/^- (Finding|Installing|Downloading)/.test(L)) c = '#60a5fa';
-     // Initializing / 初期化メッセージ
-     else if (/^(Initializing|Terraform has been successfully initialized)/.test(L)) c = '#22c55e';
-     // Terraform will perform...
-     else if (/Terraform (will perform|used the selected)/.test(L)) c = '#ccc';
-    // Creation complete
-    else if (/Creation complete after/.test(L)) c = '#22c55e';
-     // Still creating... / Destroying...
-     else if (/(Still creating|Still destroying)\.\.\./.test(L)) c = '#666';
-     // Creating... (Still なし、進行中)
-     else if (/Creating\.\.\./.test(L)) c = '#f59e0b';
-     // リソースヘッダー (# resource will be...)
-     else if (/^  # .+ (will be |must be)/.test(L)) c = '#bbb';
-     // エラーコンテキスト (with / on / N: resource)
-     else if (/^\s+(with|on)\s/.test(L)) c = '#b91c1c';
-     else if (/^\s+\d+: /.test(L)) c = '#b91c1c';
-
-    if (c) {
-       out.push('<span style="color:' + c + '">' + L + '</span>');
-     } else {
-       out.push(L);
-     }
-   }
-   return out.join('\n');
- }
- /* ===== end colorizer ===== */
- 
- function autoScrollLog(flag) {
+  function autoScrollLog(flag) {
     if (!flag) return;
     var el = document.getElementById("job-log");
     if (el) el.scrollTop = el.scrollHeight;
   }
 }
+
+/* ===== Terraform log colorizer ===== */
+function colorizeTerraformLog(text) {
+  if (typeof text !== 'string') return String(text);
+  var s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  var lines = s.split('\n');
+  var out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var L = lines[i];
+    var c = null;
+    if (/^Error:/.test(L)) c = '#ef4444';
+    else if (/^\s*[+\-~] /.test(L)) {
+      c = L.trim().charAt(0) === '+' ? '#22c55e' : L.trim().charAt(0) === '-' ? '#ef4444' : '#f59e0b';
+    }
+    else if (/^Plan: /.test(L)) {
+      L = L.replace(/(\d+) to add/g, '<span style="color:#22c55e">$1 to add</span>')
+           .replace(/(\d+) to (change|modify)/g, '<span style="color:#f59e0b">$1 to $2</span>')
+           .replace(/(\d+) to destroy/g, '<span style="color:#ef4444">$1 to destroy</span>');
+      out.push(L);
+      continue;
+    }
+    else if (/^- (Finding|Installing|Downloading)/.test(L)) c = '#60a5fa';
+    else if (/^(Initializing|Terraform has been successfully initialized)/.test(L)) c = '#22c55e';
+    else if (/Terraform (will perform|used the selected)/.test(L)) c = '#ccc';
+    else if (/Creation complete after/.test(L)) c = '#22c55e';
+    else if (/(Still creating|Still destroying)\.\.\./.test(L)) c = '#666';
+    else if (/Creating\.\.\./.test(L)) c = '#f59e0b';
+    else if (/^  # .+ (will be |must be)/.test(L)) c = '#bbb';
+    else if (/^\s+(with|on)\s/.test(L)) c = '#b91c1c';
+    else if (/^\s+\d+: /.test(L)) c = '#b91c1c';
+    if (c) {
+      out.push('<span style="color:' + c + '">' + L + '</span>');
+    } else {
+      out.push(L);
+    }
+  }
+  return out.join('\n');
+}
+/* ===== end colorizer ===== */
+
 
 init();

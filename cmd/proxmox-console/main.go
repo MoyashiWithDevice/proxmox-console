@@ -45,11 +45,6 @@ func main() {
 	// 静的JSファイルは認証なしで配信
 	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js"))))
 
-	// エラーページは認証なしで配信
-	http.HandleFunc("/error.html", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./static/error.html")
-	})
-
 	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
 
@@ -76,7 +71,7 @@ func main() {
 		// 静的ファイルが存在しない場合は404エラーページへ
 		fp := filepath.Join("./static", filepath.Clean(r.URL.Path))
 		if info, err := os.Stat(fp); err != nil || info.IsDir() {
-			http.Redirect(w, r, "/error.html?code=404", http.StatusFound)
+			http.Redirect(w, r, "/error?code=404", http.StatusFound)
 			return
 		}
 

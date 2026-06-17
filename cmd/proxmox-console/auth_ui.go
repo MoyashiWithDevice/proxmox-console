@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 )
 
 type authPageData struct {
@@ -14,6 +15,8 @@ type authPageData struct {
 }
 
 var authTmpl = template.Must(template.ParseFiles("templates/auth.html"))
+
+var errTmpl = template.Must(template.ParseGlob("templates/*.html"))
 
 func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+apiPath, nil)
@@ -71,6 +74,36 @@ func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func errorUIHandler(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code != "" {
+		var d struct {
+			ErrCode, ErrTitle, ErrDesc string
+		}
+		d.ErrCode = code
+		switch code {
+		case "404":
+			d.ErrTitle = "Not Found"
+			d.ErrDesc = "お探しのページは存在しません。"
+		case "500":
+			d.ErrTitle = "Internal Server Error"
+			d.ErrDesc = "サーバー内部でエラーが発生しました。"
+		case "503":
+			d.ErrTitle = "Service Unavailable"
+			d.ErrDesc = "認証サービスが利用できません。"
+		default:
+			d.ErrTitle = "Unknown Error"
+			d.ErrDesc = "不明なエラーが発生しました。"
+		}
+		statusCode := 500
+		if c, err2 := strconv.Atoi(code); err2 == nil {
+			statusCode = c
+		}
+		w.WriteHeader(statusCode)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		errTmpl.ExecuteTemplate(w, "error.html", d)
+		return
+	}
+
 	errorID := r.URL.Query().Get("id")
 	var flowJSON template.JS = template.JS("{}")
 	if errorID != "" {

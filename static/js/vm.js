@@ -40,10 +40,12 @@ function renderSidebar() {
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4"/></svg>' +
       '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML((v.Name || "")) + '</span></div>';
   });
-  var hasJobs = _items.some(function(v) { return v.type === "job"; });
-  if (hasJobs) {
+  var allJobs = _items.filter(function(v) { return v.type === "job"; });
+  var createJobs = allJobs.filter(function(v) { return v.kind !== "update"; });
+  var updateJobs = allJobs.filter(function(v) { return v.kind === "update"; });
+  if (createJobs.length > 0) {
     html += '<div style="padding:8px 18px 4px;font-size:10px;color:#2a2a2a;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-top:14">\u4f5c\u6210\u4e2d</div>';
-    _items.filter(function(v) { return v.type === "job"; }).forEach(function(v) {
+    createJobs.forEach(function(v) {
       var isActiveJob = String(v.id) === String(id);
       var isHoverJob = _hovered === "job-" + v.id;
       var js = STATUS_COLORS[v.status] || STATUS_COLORS.unknown;
@@ -52,6 +54,19 @@ function renderSidebar() {
         '<span style="width:8px;height:8px;border-radius:50%;background:' + js + ';flex-shrink:0;margin-top:2"></span>' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + js + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4"/></svg>' +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || "") + ' (\u4f5c\u6210\u4e2d)</span></div>';
+    });
+  }
+  if (updateJobs.length > 0) {
+    html += '<div style="padding:8px 18px 4px;font-size:10px;color:#2a2a2a;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-top:14">\u7de8\u96c6\u4e2d</div>';
+    updateJobs.forEach(function(v) {
+      var isActiveJob = String(v.id) === String(id);
+      var isHoverJob = _hovered === "job-" + v.id;
+      var js = STATUS_COLORS[v.status] || STATUS_COLORS.unknown;
+      var jcolor = isActiveJob ? "#fff" : isHoverJob ? "#aaa" : "#888";
+      html += '<div onmouseenter="setHover(\'job-' + v.id + '\')" onmouseleave="setHover(null)" onclick="window.location.href=\'/vm?job_id=' + v.id + '\'" style="display:flex;align-items:center;gap:8;padding:6px 16px;cursor:pointer;font-size:13;color:' + jcolor + ';background:' + (isActiveJob?"#111":"transparent") + ';border-left:' + (isActiveJob?"2px solid #fff":"2px solid transparent") + ';user-select:none;transition:all 0.15s;margin-bottom:2;border-radius:0 6px 6px 0">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + js + ';flex-shrink:0;margin-top:2"></span>' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + js + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 20h9M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || "") + ' (\u7de8\u96c6\u4e2d)</span></div>';
     });
   }
   cont.innerHTML = html;

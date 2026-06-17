@@ -11,6 +11,7 @@ type Job struct {
 	NodeName   string
 	Servername string
 	OwnerID    string
+	Kind       string // "create" or "update"
 }
 
 var jobs sync.Map

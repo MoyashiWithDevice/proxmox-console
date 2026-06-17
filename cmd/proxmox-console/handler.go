@@ -196,7 +196,7 @@ EOT
 	// TODO: ログの破棄と/var/lib/vz/snippetsフォルダ内のスニペットファイルの削除
 	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
 		fmt.Println("Error removing log file:", err)
-	}	
+	}
 
 	if job.VMID != 0 {
 		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
@@ -292,7 +292,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		OS:         r.FormValue("os"),
 	}
 
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID, Kind: "create"})
 
 	go runTerraformJob(jobID, &req, r)
 
@@ -328,6 +328,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 		Status     string `json:"status,omitempty"`
 		Servername string `json:"servername,omitempty"`
 		ID         string `json:"id,omitempty"`
+		Kind       string `json:"kind,omitempty"`
 	}
 
 	var result []vmResponse
@@ -358,6 +359,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 			Status:     job.Status,
 			Servername: job.Servername,
 			IP:         job.IP,
+			Kind:       job.Kind,
 		})
 		return true
 	})
@@ -779,7 +781,7 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, OwnerID: userID, VMID: req.VMID})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, OwnerID: userID, VMID: req.VMID, Kind: "update"})
 
 	// Run VM update in background
 	go runUpdateVMJob(jobID, userID, req.VMID, req.Name, req.Cores, req.Memory, req.HDD)
@@ -1026,7 +1028,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		return
 	}
-	var req struct{
+	var req struct {
 		vmid  string
 		state string
 	}
@@ -1050,7 +1052,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid vmid"})
 		return
 	}
-	if req.state != "start" && req.state != "stop"{
+	if req.state != "start" && req.state != "stop" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid state"})
 		return
@@ -1074,14 +1076,14 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
 		return
 	}
-	
+
 	if req.state == "start" {
 		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
 	} else if req.state == "stop" {
 		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
 	}
 
-	if err != nil{
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return

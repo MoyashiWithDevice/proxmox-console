@@ -150,19 +150,21 @@ function App() {
     h("td", { style: td }, item.Memory + " MB"),
     h("td", { style: Object.assign({}, td, { width: 140 }) },
       h("button", {
+        type:    "button",
         onClick: function(e) {
           e.stopPropagation();
           var action = (vmStatus === 'running') ? 'stop' : 'start';
           if (action === 'stop' && !confirm('このVMを停止しますか？')) return;
-          fetch('/api/vm/' + action, {
+          fetch('/api/vm/state', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vmid: item.VMID })
+            body: JSON.stringify({ 
+              vmid: item.VMID, 
+              state: action
+            })
           }).then(function(res){
             if (!res.ok) return res.text().then(function(t){ throw new Error(t); });
-            // refresh list
-            window.location.reload();
           }).catch(function(err){ alert('操作に失敗しました: ' + err.message); });
         },
         style: { padding: '6px 10px', borderRadius: 6, border: 'none', background: vmStatus === 'running' ? '#dc2626' : '#16a34a', color: '#fff', cursor: 'pointer' }

@@ -559,16 +559,20 @@ function VMEditor(props) {
 
       !editing
         ? h("button", {
-            key: "start-stop",
+            type: "button",
+            key:  "start-stop",
             onClick: function(e) {
               e.stopPropagation();
               var action = (vm && (vm.Status || vm.status) === "running") ? "stop" : "start";
               if (action === "stop" && !confirm("Stop this VM?")) return;
-              fetch("/api/vm/" + action, {
+              fetch("/api/vm/state", {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ vmid: vm.VMID })
+                body: JSON.stringify({ 
+                  vmid:  vm.VMID,
+                  state: action
+                })
               }).then(function(res){
                 if (!res.ok) {
                   return res.text().then(function(t){ throw new Error("HTTP " + res.status + ": " + t); });
@@ -578,12 +582,12 @@ function VMEditor(props) {
                   return JSON.parse(text);
                 });
               }).then(function(){
-                fetch("/api/vm?vmid=" + vm.VMID, { credentials: "include" })
-                  .then(function(r){ return r.json(); })
-                  .then(function(data){ setVM(data); })
-                  .catch(function(){});
-              }).catch(function(err){ 
-                alert("Operation failed: " + err.message); 
+                setVM(function(prev){
+                  return {
+                    ...prev,
+                    status: action === "start"? "running": "stopped"
+                  };
+                });; 
               });
             },
             style: {

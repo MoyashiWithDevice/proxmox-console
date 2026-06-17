@@ -1011,8 +1011,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-// startVMHandler は VM を起動します
-func startVMHandler(w http.ResponseWriter, r *http.Request) {
+func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -1027,19 +1026,28 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		return
 	}
-
-	var req struct {
-		VMID int `json:"vmid"`
+	var req struct{
+		vmid  int
+		state string
+	}{
+		vmid: r.FormValue("vmid")
+		state: r.FormValue("state")
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
 		return
 	}
 
-	if req.VMID == 0 {
+	if req.vmid == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
+		return
+	}
+	if req.state != "start" && req.state != "stop"{
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid state"})
 		return
 	}
 
@@ -1050,7 +1058,7 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID)
+	vm, err := getVMByProxmoxID(req.vmid)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
@@ -1061,74 +1069,21 @@ func startVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
 		return
 	}
+	
+	if (req.state == "start"){
+		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+	}else if(req.state == "stop"){
+		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+	}
 
-	if err := startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+	if err != nil{
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
-}
-
-// stopVMHandler は VM を停止します
-func stopVMHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
-		return
-	}
-
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
-		return
-	}
-
-	var req struct {
-		VMID int `json:"vmid"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
-		return
-	}
-
-	if req.VMID == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
-		return
-	}
-
-	dbUserID, err := getDatabaseUserID(userID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "internal"})
-		return
-	}
-
-	vm, err := getVMByProxmoxID(req.VMID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
-		return
-	}
-	if vm.UserID != dbUserID {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
-		return
-	}
-
-	if err := stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
 }

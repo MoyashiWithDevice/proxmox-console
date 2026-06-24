@@ -103,7 +103,7 @@ type User struct {
 }
 
 // VM はVM情報を表します
-type VM struct {
+type ManageVM struct {
 	ID          int
 	UserID      int
 	ProxmoxVMID int
@@ -141,8 +141,8 @@ func getOrCreateUser(kratosID string) (*User, error) {
 }
 
 // createVM はVM情報をデータベースに保存します
-func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*VM, error) {
-	vm := &VM{}
+func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*ManageVM, error) {
+	vm := &ManageVM{}
 	err := db.QueryRow(
 		"INSERT INTO vms (user_id, proxmox_vm_id, node_name, tf_workdir, status) VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at",
 		userID, proxmoxVMID, nodeName, tfWorkdir, "creating",
@@ -156,7 +156,7 @@ func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*
 }
 
 // getUserVMs はユーザーのVMリストを取得します
-func getUserVMs(userID int) ([]*VM, error) {
+func getUserVMs(userID int) ([]*ManageVM, error) {
 	rows, err := db.Query(
 		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE user_id = $1 ORDER BY created_at DESC",
 		userID,
@@ -166,9 +166,9 @@ func getUserVMs(userID int) ([]*VM, error) {
 	}
 	defer rows.Close()
 
-	var vms []*VM
+	var vms []*ManageVM
 	for rows.Next() {
-		vm := &VM{}
+		vm := &ManageVM{}
 		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan vm: %w", err)
 		}
@@ -183,8 +183,8 @@ func getUserVMs(userID int) ([]*VM, error) {
 }
 
 // getVM はVM情報を ID で取得します
-func getVM(vmID int) (*VM, error) {
-	vm := &VM{}
+func getVM(vmID int) (*ManageVM, error) {
+	vm := &ManageVM{}
 	err := db.QueryRow(
 		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE id = $1",
 		vmID,
@@ -197,8 +197,8 @@ func getVM(vmID int) (*VM, error) {
 	return vm, nil
 }
 
-func getVMByProxmoxID(proxmoxID int) (*VM, error) {
-	vm := &VM{}
+func getVMByProxmoxID(proxmoxID int) (*ManageVM, error) {
+	vm := &ManageVM{}
 	err := db.QueryRow(
 		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1",
 		proxmoxID,

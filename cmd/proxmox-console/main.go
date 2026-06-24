@@ -25,7 +25,7 @@ func main() {
 	godotenv.Load()
 	PORT = os.Getenv("PORT")
 	err := loadConfig()
-	if err != nil{
+	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
@@ -64,8 +64,6 @@ func main() {
 	http.HandleFunc("/api/vm/key", requireLogin(vmPrivateKeyHandler))
 	http.HandleFunc("/api/vm/terminal", vmTerminalHandler)
 	http.HandleFunc("/api/vm/state", requireLogin(chStateHandler))
-	http.HandleFunc("/api/create", requireLogin(createVMHandler))
-	http.HandleFunc("/api/update", updateVMHandler)
 	http.HandleFunc("/api/jobs", requireLogin(listJobsHandler))
 	http.HandleFunc("/api/settings", settingsAPIHandler)
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
@@ -107,30 +105,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, data.LogoutURL, http.StatusFound)
-}
-
-func listJobsHandler(w http.ResponseWriter, r *http.Request) {
-	type jobResp struct {
-		ID         string `json:"id"`
-		Status     string `json:"status"`
-		IP         string `json:"ip"`
-		Servername string `json:"servername"`
-	}
-
-	var result []jobResp
-	jobs.Range(func(key, value interface{}) bool {
-		j := value.(*Job)
-		result = append(result, jobResp{
-			ID:         key.(string),
-			Status:     j.Status,
-			IP:         j.IP,
-			Servername: j.Servername,
-		})
-		return true
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
 }
 
 func supportHandler(w http.ResponseWriter, r *http.Request) {

@@ -450,9 +450,11 @@ function VMEditor(props) {
       return;
     }
 
+    // TODO: 後で変更箇所のみを
+    // パラメタに含めて送信するように変更する
     setSaving(true);
-    fetch("/api/update", {
-      method: "POST",
+    fetch("/api/vm", {
+      method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

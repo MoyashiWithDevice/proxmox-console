@@ -40,6 +40,7 @@ function renderAuthForm() {
   var method = ui.method || 'POST';
   var messages = ui.messages || [];
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
+  var submitLabel = IS_REG ? 'Create account' : 'Sign in';
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -63,26 +64,30 @@ function renderAuthForm() {
     var nodeType = node.type;
     var meta = node.meta || {};
     var label = meta.label || {};
-    var labelText = label.text || '';
+      var labelText = label.text || '';
 
-    if (nodeType === 'input') {
-      var inputType = attrs.type || 'text';
-      var name = attrs.name || '';
-      var value = attrs.value || '';
-      var required = attrs.required;
-      var autocomplete = attrs.autocomplete || '';
-      var placeholder = autocomplete;
+      if (nodeType === 'input') {
+        var inputType = attrs.type || 'text';
+        var name = attrs.name || '';
+        var value = attrs.value || '';
+        var required = attrs.required;
+        var autocomplete = attrs.autocomplete || '';
+        var placeholder = autocomplete;
 
-      if (inputType === 'hidden') {
-        html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
-      } else if (inputType === 'submit') {
-        html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px"' + (value?'>'+escapeHTML(value):'>'+escapeHTML(labelText)) + '</button>';
-      } else {
-        html += '<div style="margin-bottom:18px">';
-        if (labelText) {
-          html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">' + escapeHTML(labelText) + '</label>';
-        }
-        if (inputType === 'password') { placeholder = 'Enter your password'; }
+        if (inputType === 'hidden') {
+          html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
+        } else if (inputType === 'submit') {
+          // Kratos returns one submit button per auth method (password, passkey, etc.)
+          // Only render the password method button with proper display text
+          if (value === 'password') {
+            html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
+          }
+        } else {
+          html += '<div style="margin-bottom:18px">';
+          if (labelText) {
+            html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">' + escapeHTML(labelText) + '</label>';
+          }
+          if (inputType === 'password') { placeholder = 'Enter your password'; }
         html += '<input type="' + escapeHTML(inputType) + '" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '" placeholder="' + escapeHTML(placeholder) + '" style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none"';
         if (required) html += ' required';
         html += '>';
@@ -115,17 +120,28 @@ function handleFormSubmit(e) {
 
   msgBox.style.display = 'none';
 
-  fetch(form.action, {
+  // Determine proxy endpoint based on current page
+  var proxyEndpoint = IS_REG ? '/api/auth/registration' : '/api/auth/login';
+
+  // Extract flow ID from the original Kratos action URL
+  var flowParam = '';
+  if (form.action) {
+    var qIdx = form.action.indexOf('?');
+    if (qIdx !== -1) {
+      var params = new URLSearchParams(form.action.substring(qIdx));
+      flowParam = params.get('flow') || '';
+    }
+  }
+  if (flowParam) {
+    formData.set('flow', flowParam);
+  }
+
+  fetch(proxyEndpoint, {
     method: form.method,
     body: formData,
-    redirect: 'manual'
   }).then(function(res) {
-    if (res.type === 'opaqueredirect' || res.status === 303 || res.status === 302) {
-      window.location.href = res.headers.get('Location') || '/';
-      return;
-    }
-    if (res.ok) {
-      window.location.href = '/';
+    if (res.redirected) {
+      window.location.href = res.url;
       return;
     }
     return res.text().then(function(text) {

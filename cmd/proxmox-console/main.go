@@ -90,7 +90,9 @@ func main() {
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/login", loginUIHandler)
+	http.HandleFunc("/api/auth/login", proxyAuthHandler("login"))
 	http.HandleFunc("/registration", registrationUIHandler)
+	http.HandleFunc("/api/auth/registration", proxyAuthHandler("registration"))
 	http.HandleFunc("/error", errorUIHandler)
 
 	fmt.Printf("Server started at %s\n", AppConfig.App.URL)

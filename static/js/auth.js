@@ -41,6 +41,7 @@ function renderAuthForm() {
   var messages = ui.messages || [];
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
   var submitLabel = IS_REG ? 'Create account' : 'Sign in';
+  var hasPassword = false;
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -69,6 +70,7 @@ function renderAuthForm() {
       if (nodeType === 'input') {
         var inputType = attrs.type || 'text';
         var name = attrs.name || '';
+        if (name === 'password') hasPassword = true;
         var value = attrs.value || '';
         var required = attrs.required;
         var autocomplete = attrs.autocomplete || '';
@@ -95,6 +97,14 @@ function renderAuthForm() {
     }
   });
 
+  // Registration: パスワードフィールドがなければ追加（1画面に email + password を表示）
+  if (IS_REG && !hasPassword) {
+    html += '<div style="margin-bottom:18px">';
+    html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">Password</label>';
+    html += '<input type="password" name="password" placeholder="Enter your password" required style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none">';
+    html += '</div>';
+  }
+
   html += '</form>';
 
   var linkText = IS_REG ? 'Already have an account? ' : 'Don\'t have an account? ';
@@ -115,18 +125,14 @@ function handleFormSubmit(e) {
   e.preventDefault();
   var form = document.getElementById('auth-form');
   var msgBox = document.getElementById('auth-msg');
-  var submitter = e.submitter || e.originalEvent && e.originalEvent.submitter;
 
   msgBox.style.display = 'none';
 
   // Determine proxy endpoint based on current page
   var proxyEndpoint = IS_REG ? '/api/auth/registration' : '/api/auth/login';
 
-  // FormData は form 要素から作る（submit ボタンは含めない）
+  // FormData は form 要素から作る
   var formData = new FormData(form);
-  // 未チェックの submit ボタンの name/value を削除する（Kratos が複数値で混乱するため）
-  formData.delete('method');
-  formData.delete('screen');
 
   // Extract flow ID from the original Kratos action URL
   var flowParam = '';
@@ -141,15 +147,9 @@ function handleFormSubmit(e) {
     formData.set('flow', flowParam);
   }
 
-  // クリックされた submit ボタンの name/value だけを追加
-  if (submitter && submitter.name) {
-    formData.set(submitter.name, submitter.value || '');
-  }
-
   fetch(proxyEndpoint, {
     method: form.method,
     body: formData,
-    credentials: 'same-origin',
   }).then(function(res) {
     if (res.redirected) {
       window.location.href = res.url;

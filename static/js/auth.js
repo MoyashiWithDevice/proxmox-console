@@ -77,7 +77,10 @@ function renderAuthForm() {
         if (inputType === 'hidden') {
           html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
         } else if (inputType === 'submit') {
-          html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
+          var btnName = name ? ' name="' + escapeHTML(name) + '"' : '';
+          var btnValue = attrs.value ? ' value="' + escapeHTML(attrs.value) + '"' : '';
+          var btnLabel = (labelText || submitLabel);
+          html += '<button type="submit"' + btnName + btnValue + ' class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(btnLabel) + '</button>';
         } else {
           html += '<div style="margin-bottom:18px">';
           if (labelText) {
@@ -111,13 +114,19 @@ function renderAuthForm() {
 function handleFormSubmit(e) {
   e.preventDefault();
   var form = document.getElementById('auth-form');
-  var formData = new FormData(form);
   var msgBox = document.getElementById('auth-msg');
+  var submitter = e.submitter || e.originalEvent && e.originalEvent.submitter;
 
   msgBox.style.display = 'none';
 
   // Determine proxy endpoint based on current page
   var proxyEndpoint = IS_REG ? '/api/auth/registration' : '/api/auth/login';
+
+  // FormData は form 要素から作る（submit ボタンは含めない）
+  var formData = new FormData(form);
+  // 未チェックの submit ボタンの name/value を削除する（Kratos が複数値で混乱するため）
+  formData.delete('method');
+  formData.delete('screen');
 
   // Extract flow ID from the original Kratos action URL
   var flowParam = '';
@@ -132,9 +141,15 @@ function handleFormSubmit(e) {
     formData.set('flow', flowParam);
   }
 
+  // クリックされた submit ボタンの name/value だけを追加
+  if (submitter && submitter.name) {
+    formData.set(submitter.name, submitter.value || '');
+  }
+
   fetch(proxyEndpoint, {
     method: form.method,
     body: formData,
+    credentials: 'same-origin',
   }).then(function(res) {
     if (res.redirected) {
       window.location.href = res.url;

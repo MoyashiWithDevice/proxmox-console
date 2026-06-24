@@ -77,11 +77,7 @@ function renderAuthForm() {
         if (inputType === 'hidden') {
           html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
         } else if (inputType === 'submit') {
-          // Kratos returns one submit button per auth method (password, passkey, etc.)
-          // Only render the password method button with proper display text
-          if (value === 'password') {
-            html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
-          }
+          html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
         } else {
           html += '<div style="margin-bottom:18px">';
           if (labelText) {

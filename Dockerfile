@@ -30,6 +30,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/proxmox-console /usr/local/bin/proxmox-console
+COPY --from=builder /src/templates ./templates
 COPY --from=builder /src/static ./static
 COPY --from=builder /src/terraform ./terraform
 COPY --from=builder /src/setting.json ./setting.json

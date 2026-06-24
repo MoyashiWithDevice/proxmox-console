@@ -25,7 +25,7 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 				json.NewEncoder(w).Encode(map[string]string{"error": "authentication service unavailable"})
 				return
 			}
-			http.Redirect(w, r, "/error.html?code=503", http.StatusFound)
+			http.Redirect(w, r, "/error?code=503", http.StatusFound)
 			return
 		}
 		defer resp.Body.Close()
@@ -52,6 +52,6 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"error": "authentication failed"})
 			return
 		}
-		http.Redirect(w, r, "/error.html?code=500", http.StatusFound)
+		http.Redirect(w, r, "/error?code=500", http.StatusFound)
 	}
 }

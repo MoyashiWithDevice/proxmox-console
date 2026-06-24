@@ -6,3 +6,4 @@
 *kratos.yaml
 terraform/vms/*
 cert/*
+proxmox-console.exe

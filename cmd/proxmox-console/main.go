@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -35,24 +36,42 @@ func main() {
 	}
 	defer closeDB()
 
-	// エラーページは認証なしで配信
-	http.HandleFunc("/error.html", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./static/error.html")
-	})
+	// テンプレートパース
+	tmpl := template.Must(template.ParseGlob("templates/*.html"))
+
+	// 静的CSSファイルは認証なしで配信
+	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./static/css"))))
+
+	// 静的JSファイルは認証なしで配信
+	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js"))))
 
 	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
 
 		// ルートは dashboard.html を表示
 		if r.URL.Path == "/" {
-			http.ServeFile(w, r, "./static/dashboard.html")
+			tmpl.ExecuteTemplate(w, "dashboard.html", nil)
+			return
+		}
+
+		// 新しいテンプレートルート
+		if r.URL.Path == "/vm" || r.URL.Path == "/info" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
+			tmpl.ExecuteTemplate(w, r.URL.Path[1:]+".html", nil)
+			return
+		}
+
+		// Terminal テンプレート（vmid パラメータ付き）
+		if r.URL.Path == "/terminal" {
+			tmpl.ExecuteTemplate(w, "terminal.html", map[string]string{
+				"VMID": r.URL.Query().Get("vmid"),
+			})
 			return
 		}
 
 		// 静的ファイルが存在しない場合は404エラーページへ
 		fp := filepath.Join("./static", filepath.Clean(r.URL.Path))
 		if info, err := os.Stat(fp); err != nil || info.IsDir() {
-			http.Redirect(w, r, "/error.html?code=404", http.StatusFound)
+			http.Redirect(w, r, "/error?code=404", http.StatusFound)
 			return
 		}
 
@@ -72,7 +91,7 @@ func main() {
 	http.HandleFunc("/registration", registrationUIHandler)
 	http.HandleFunc("/error", errorUIHandler)
 
-	fmt.Println("Server started")
+	fmt.Printf("Server started at %s\n", AppConfig.App.URL)
 	log.Fatal(http.ListenAndServe(":"+PORT, loggingMiddleware(http.DefaultServeMux)))
 }
 

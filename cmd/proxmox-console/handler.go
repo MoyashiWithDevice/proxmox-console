@@ -483,6 +483,8 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		VMID  int    `json:"vmid"`
 		State string `json:"state"`
 	}
+	req.vmid = r.FormValue("vmid")
+	req.state = r.FormValue("state")
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)

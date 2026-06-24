@@ -43,7 +43,7 @@ func main() {
 	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./static/css"))))
 
 	// 静的JSファイルは認証なしで配信
-	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js"))))
+	http.Handle("/js/", noCacheMiddleware(http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js")))))
 
 	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +209,15 @@ func runCmdWithLog(cmd *exec.Cmd, logFile *os.File) ([]byte, error) {
 	}
 
 	return buf.Bytes(), err
+}
+
+func noCacheMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

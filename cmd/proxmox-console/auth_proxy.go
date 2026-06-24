@@ -59,8 +59,6 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 
 	// Forward form data to Kratos
 	body := r.Form.Encode()
-	// 送信内容をデバッグログに出力
-	log.Printf("[auth proxy] %s flow=%s body=%q cookies=%d", flowType, flowID, body, len(r.Cookies()))
 
 	req, err := http.NewRequest(http.MethodPost, kratosAction, strings.NewReader(body))
 		if err != nil {

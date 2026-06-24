@@ -136,13 +136,15 @@ function handleFormSubmit(e) {
     method: form.method,
     body: formData,
   }).then(function(res) {
-    if (res.redirected) {
-      window.location.href = res.url;
-      return;
-    }
     return res.text().then(function(text) {
       try {
         var data = JSON.parse(text);
+        // Proxy returns { redirect_to: "..." } on success (instead of HTTP 303)
+        if (data.redirect_to) {
+          window.location.href = data.redirect_to;
+          return;
+        }
+        // Kratos inline redirect (rare, but keep for compat)
         if (data.redirect_browser_to) {
           window.location.href = data.redirect_browser_to;
           return;

@@ -93,7 +93,7 @@ func main() {
 	http.HandleFunc("/registration", registrationUIHandler)
 	http.HandleFunc("/error", errorUIHandler)
 
-	fmt.Println("Server started")
+	fmt.Printf("Server started at %s\n", AppConfig.App.URL)
 	log.Fatal(http.ListenAndServe(":"+PORT, loggingMiddleware(http.DefaultServeMux)))
 }
 

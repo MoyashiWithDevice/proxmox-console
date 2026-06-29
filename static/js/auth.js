@@ -42,6 +42,7 @@ function renderAuthForm() {
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
   var submitLabel = IS_REG ? 'Create account' : 'Sign in';
   var hasPassword = false;
+  var submitBtnHtml = '';
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -82,7 +83,7 @@ function renderAuthForm() {
           var btnName = name ? ' name="' + escapeHTML(name) + '"' : '';
           var btnValue = attrs.value ? ' value="' + escapeHTML(attrs.value) + '"' : '';
           var btnLabel = (labelText || submitLabel);
-          html += '<button type="submit"' + btnName + btnValue + ' class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(btnLabel) + '</button>';
+          submitBtnHtml = '<button type="submit"' + btnName + btnValue + ' class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(btnLabel) + '</button>';
         } else {
           html += '<div style="margin-bottom:18px">';
           if (labelText) {
@@ -104,6 +105,8 @@ function renderAuthForm() {
     html += '<input type="password" name="password" placeholder="Enter your password" required style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none">';
     html += '</div>';
   }
+
+  html += submitBtnHtml || '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
 
   html += '</form>';
 

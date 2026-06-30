@@ -141,10 +141,13 @@ function handleFormSubmit(e) {
   // FormData は form 要素から作る（hidden flow も含まれる）
   var formData = new FormData(form);
 
+  console.log('[auth] submitting to', form.action, 'method', form.method);
+
   fetch(form.action, {
     method: form.method,
     body: formData,
   }).then(function(res) {
+    console.log('[auth] response status', res.status, 'redirected', res.redirected);
     if (res.redirected) {
       window.location.href = res.url;
       return;
@@ -160,13 +163,15 @@ function handleFormSubmit(e) {
         render();
         bindForm();
       } catch(e) {
+        console.error('[auth] parse error:', e, 'body:', text);
         msgBox.style.display = 'block';
         msgBox.style.background = 'rgba(220,38,38,0.08)';
         msgBox.style.color = '#dc2626';
         msgBox.textContent = 'Authentication failed. Please try again.';
       }
     });
-  }).catch(function() {
+  }).catch(function(err) {
+    console.error('[auth] fetch failed:', err, 'action:', form.action);
     msgBox.style.display = 'block';
     msgBox.style.background = 'rgba(220,38,38,0.08)';
     msgBox.style.color = '#dc2626';

@@ -43,6 +43,9 @@ func rewriteLocation(location string, r *http.Request) string {
 // This avoids CORS issues when the browser posts directly to Kratos's public API.
 func proxyAuthHandler(flowType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[proxy] %s request received from %s, Content-Type: %s, flow: %s",
+			flowType, r.RemoteAddr, r.Header.Get("Content-Type"), r.FormValue("flow"))
+
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -149,14 +152,19 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 // 3. 正常なら Kratos に password + method=password を送信
 // 4. 完了したら 303 リダイレクト、エラーなら flow JSON を返す
 func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[combined-reg] start: Content-Type=%s, flow=%s, email=%s",
+		r.Header.Get("Content-Type"), r.FormValue("flow"), r.FormValue("traits.email"))
+
 	flowID := r.FormValue("flow")
 	if flowID == "" {
+		log.Printf("[combined-reg] missing flow")
 		http.Error(w, "missing flow", http.StatusBadRequest)
 		return
 	}
 	email := r.FormValue("traits.email")
 	password := r.FormValue("password")
 	if email == "" || password == "" {
+		log.Printf("[combined-reg] missing email or password")
 		http.Error(w, "email and password are required", http.StatusBadRequest)
 		return
 	}
@@ -168,6 +176,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 		writeKratosError(w, http.StatusInternalServerError, "authentication service unavailable")
 		return
 	}
+	log.Printf("[combined-reg] step1 flow fetched OK, has csrf=%v", extractCsrfToken(flow1) != "")
 
 	csrf1 := extractCsrfToken(flow1)
 	step1Body := url.Values{
@@ -184,6 +193,8 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp1.Body.Close()
 
+	log.Printf("[combined-reg] step1 response status=%d", resp1.StatusCode)
+
 	// Kratos からの Set-Cookie を転送
 	for _, c := range resp1.Cookies() {
 		http.SetCookie(w, c)
@@ -192,6 +203,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 	// Step 1 が 303 以外 → エラーとして flow を返す
 	if resp1.StatusCode != http.StatusSeeOther && resp1.StatusCode != http.StatusFound {
 		bodyBytes, _ := io.ReadAll(resp1.Body)
+		log.Printf("[combined-reg] step1 not redirect, body=%s", string(bodyBytes))
 		tryReturnFlowAsJSON(w, resp1.StatusCode, bodyBytes)
 		return
 	}
@@ -204,6 +216,8 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hasErrors := hasFlowErrors(flow2)
+	log.Printf("[combined-reg] step2 flow fetched OK, has errors=%v", hasErrors)
 	if hasFlowErrors(flow2) {
 		// traits.email にエラーがある場合（重複・書式違反など）
 		w.Header().Set("Content-Type", "application/json")
@@ -214,6 +228,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: password + method=password を送信
 	csrf2 := extractCsrfToken(flow2)
+	log.Printf("[combined-reg] step2 csrf present=%v", csrf2 != "")
 	step2Body := url.Values{
 		"csrf_token":   {csrf2},
 		"traits.email": {email},
@@ -229,6 +244,8 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp2.Body.Close()
 
+	log.Printf("[combined-reg] step2 response status=%d", resp2.StatusCode)
+
 	for _, c := range resp2.Cookies() {
 		http.SetCookie(w, c)
 	}
@@ -238,17 +255,20 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 		if location == "" {
 			location = "/"
 		}
+		log.Printf("[combined-reg] step2 redirect to %s", location)
 		http.Redirect(w, r, rewriteLocation(location, r), http.StatusSeeOther)
 		return
 	}
 
 	if resp2.StatusCode == http.StatusOK {
+		log.Printf("[combined-reg] step2 OK, redirecting to /")
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
 	// Step 2 エラー → flow JSON を返す
 	bodyBytes, _ := io.ReadAll(resp2.Body)
+	log.Printf("[combined-reg] step2 error status=%d body=%s", resp2.StatusCode, string(bodyBytes))
 	tryReturnFlowAsJSON(w, resp2.StatusCode, bodyBytes)
 }
 

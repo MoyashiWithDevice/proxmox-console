@@ -102,63 +102,7 @@ function renderAuthForm() {
 
   html += '</div></div>';
 
-  html += '<div id="auth-msg" style="display:none;margin-top:20px;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5"></div>';
-
   return html;
 }
 
-function handleFormSubmit(e) {
-  e.preventDefault();
-  var form = document.getElementById('auth-form');
-  var formData = new FormData(form);
-  var msgBox = document.getElementById('auth-msg');
-
-  msgBox.style.display = 'none';
-
-  fetch(form.action, {
-    method: form.method,
-    body: formData,
-    redirect: 'manual'
-  }).then(function(res) {
-    if (res.type === 'opaqueredirect' || res.status === 303 || res.status === 302) {
-      window.location.href = res.headers.get('Location') || '/';
-      return;
-    }
-    if (res.ok) {
-      window.location.href = '/';
-      return;
-    }
-    return res.text().then(function(text) {
-      try {
-        var data = JSON.parse(text);
-        if (data.redirect_browser_to) {
-          window.location.href = data.redirect_browser_to;
-          return;
-        }
-        FLOW = data;
-        render();
-        bindForm();
-      } catch(e) {
-        msgBox.style.display = 'block';
-        msgBox.style.background = 'rgba(220,38,38,0.08)';
-        msgBox.style.color = '#dc2626';
-        msgBox.textContent = 'Authentication failed. Please try again.';
-      }
-    });
-  }).catch(function() {
-    msgBox.style.display = 'block';
-    msgBox.style.background = 'rgba(220,38,38,0.08)';
-    msgBox.style.color = '#dc2626';
-    msgBox.textContent = 'Network error. Please try again.';
-  });
-}
-
-function bindForm() {
-  var form = document.getElementById('auth-form');
-  if (form) {
-    form.addEventListener('submit', handleFormSubmit);
-  }
-}
-
 render();
-bindForm();

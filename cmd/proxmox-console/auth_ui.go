@@ -16,8 +16,6 @@ type authPageData struct {
 
 var authTmpl = template.Must(template.ParseFiles("templates/auth.html"))
 
-var errTmpl = template.Must(template.ParseGlob("templates/*.html"))
-
 func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+apiPath, nil)
 	if err != nil {
@@ -100,7 +98,7 @@ func errorUIHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(statusCode)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		errTmpl.ExecuteTemplate(w, "error.html", d)
+		renderPage(w, "error.html", d)
 		return
 	}
 

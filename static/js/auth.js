@@ -40,6 +40,9 @@ function renderAuthForm() {
   var method = ui.method || 'POST';
   var messages = ui.messages || [];
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
+  var submitLabel = IS_REG ? 'Create account' : 'Sign in';
+  var hasPassword = false;
+  var submitBtnHtml = '';
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -76,11 +79,9 @@ function renderAuthForm() {
       if (inputType === 'hidden') {
         html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
       } else if (inputType === 'submit') {
-        html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px"';
-        if (name) html += ' name="' + escapeHTML(name) + '"';
-        if (value) html += ' value="' + escapeHTML(value) + '"';
-        html += '>' + escapeHTML(labelText || value) + '</button>';
+        submitBtnHtml = '<button type="submit" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(labelText || submitLabel) + '</button>';
       } else {
+        if (name === 'password') hasPassword = true;
         html += '<div style="margin-bottom:18px">';
         if (labelText) {
           html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">' + escapeHTML(labelText) + '</label>';
@@ -93,6 +94,16 @@ function renderAuthForm() {
       }
     }
   });
+
+  // Registration: inject password field if Kratos didn't provide one
+  if (IS_REG && !hasPassword) {
+    html += '<div style="margin-bottom:18px">';
+    html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">Password</label>';
+    html += '<input type="password" name="password" placeholder="Enter your password" required style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none">';
+    html += '</div>';
+  }
+
+  html += submitBtnHtml || '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
 
   html += '</form>';
 

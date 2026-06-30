@@ -141,6 +141,14 @@ function handleFormSubmit(e) {
   // FormData は form 要素から作る（hidden flow も含まれる）
   var formData = new FormData(form);
 
+  // Kratos の submit button (name="method") は FormData に含まれないので明示的に追加
+  if (!formData.has('method')) {
+    var methodEl = form.querySelector('[name="method"][value]');
+    if (methodEl && methodEl.value) {
+      formData.set('method', methodEl.value);
+    }
+  }
+
   fetch(form.action, {
     method: 'POST',
     body: formData,

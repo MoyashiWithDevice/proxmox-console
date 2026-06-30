@@ -40,6 +40,9 @@ function renderAuthForm() {
   var method = ui.method || 'POST';
   var messages = ui.messages || [];
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
+  var submitLabel = IS_REG ? 'Create account' : 'Sign in';
+  var hasPassword = false;
+  var submitBtnHtml = '';
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -56,33 +59,44 @@ function renderAuthForm() {
     html += '<span>' + escapeHTML(text) + '</span></div>';
   });
 
-  html += '<form id="auth-form" action="' + escapeHTML(action) + '" method="' + escapeHTML(method) + '">';
+  // action は Kratos の URL ではなく proxy エンドポイントを直接指定
+  var proxyAction = IS_REG ? '/api/auth/registration' : '/api/auth/login';
+  html += '<form id="auth-form" action="' + proxyAction + '" method="' + escapeHTML(method) + '">';
+
+  // flow ID を hidden field として直接埋め込む（URL パース不要に）
+  if (FLOW && FLOW.id) {
+    html += '<input type="hidden" name="flow" value="' + escapeHTML(FLOW.id) + '">';
+  }
 
   nodes.forEach(function(node) {
     var attrs = node.attributes || {};
     var nodeType = node.type;
     var meta = node.meta || {};
     var label = meta.label || {};
-    var labelText = label.text || '';
+      var labelText = label.text || '';
 
-    if (nodeType === 'input') {
-      var inputType = attrs.type || 'text';
-      var name = attrs.name || '';
-      var value = attrs.value || '';
-      var required = attrs.required;
-      var autocomplete = attrs.autocomplete || '';
-      var placeholder = autocomplete;
+      if (nodeType === 'input') {
+        var inputType = attrs.type || 'text';
+        var name = attrs.name || '';
+        if (name === 'password') hasPassword = true;
+        var value = attrs.value || '';
+        var required = attrs.required;
+        var autocomplete = attrs.autocomplete || '';
+        var placeholder = autocomplete;
 
-      if (inputType === 'hidden') {
-        html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
-      } else if (inputType === 'submit') {
-        html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px"' + (value?'>'+escapeHTML(value):'>'+escapeHTML(labelText)) + '</button>';
-      } else {
-        html += '<div style="margin-bottom:18px">';
-        if (labelText) {
-          html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">' + escapeHTML(labelText) + '</label>';
-        }
-        if (inputType === 'password') { placeholder = 'Enter your password'; }
+        if (inputType === 'hidden') {
+          html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
+        } else if (inputType === 'submit') {
+          var btnName = name ? ' name="' + escapeHTML(name) + '"' : '';
+          var btnValue = attrs.value ? ' value="' + escapeHTML(attrs.value) + '"' : '';
+          var btnLabel = (labelText || submitLabel);
+          submitBtnHtml = '<button type="submit"' + btnName + btnValue + ' class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(btnLabel) + '</button>';
+        } else {
+          html += '<div style="margin-bottom:18px">';
+          if (labelText) {
+            html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">' + escapeHTML(labelText) + '</label>';
+          }
+          if (inputType === 'password') { placeholder = 'Enter your password'; }
         html += '<input type="' + escapeHTML(inputType) + '" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '" placeholder="' + escapeHTML(placeholder) + '" style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none"';
         if (required) html += ' required';
         html += '>';
@@ -90,6 +104,16 @@ function renderAuthForm() {
       }
     }
   });
+
+  // Registration: パスワードフィールドがなければ追加（1画面に email + password を表示）
+  if (IS_REG && !hasPassword) {
+    html += '<div style="margin-bottom:18px">';
+    html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">Password</label>';
+    html += '<input type="password" name="password" placeholder="Enter your password" required style="width:100%;padding:14px 16px;background:#0a0a12;border:1px solid rgba(255,255,255,0.08);color:#fff;font-size:16px;outline:none">';
+    html += '</div>';
+  }
+
+  html += submitBtnHtml || '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
 
   html += '</form>';
 
@@ -110,22 +134,28 @@ function renderAuthForm() {
 function handleFormSubmit(e) {
   e.preventDefault();
   var form = document.getElementById('auth-form');
-  var formData = new FormData(form);
   var msgBox = document.getElementById('auth-msg');
 
   msgBox.style.display = 'none';
 
-  fetch(form.action, {
-    method: form.method,
-    body: formData,
-    redirect: 'manual'
-  }).then(function(res) {
-    if (res.type === 'opaqueredirect' || res.status === 303 || res.status === 302) {
-      window.location.href = res.headers.get('Location') || '/';
-      return;
+  // FormData は form 要素から作る（hidden flow も含まれる）
+  var formData = new FormData(form);
+
+  // Kratos の submit button (name="method") は FormData に含まれないので明示的に追加
+  if (!formData.has('method')) {
+    var methodEl = form.querySelector('[name="method"][value]');
+    if (methodEl && methodEl.value) {
+      formData.set('method', methodEl.value);
     }
-    if (res.ok) {
-      window.location.href = '/';
+  }
+
+  fetch(form.action, {
+    method: 'POST',
+    body: formData,
+  }).then(function(res) {
+    console.log('[auth] response status', res.status, 'redirected', res.redirected);
+    if (res.redirected) {
+      window.location.href = res.url;
       return;
     }
     return res.text().then(function(text) {
@@ -139,13 +169,15 @@ function handleFormSubmit(e) {
         render();
         bindForm();
       } catch(e) {
+        console.error('[auth] parse error:', e, 'body:', text);
         msgBox.style.display = 'block';
         msgBox.style.background = 'rgba(220,38,38,0.08)';
         msgBox.style.color = '#dc2626';
         msgBox.textContent = 'Authentication failed. Please try again.';
       }
     });
-  }).catch(function() {
+  }).catch(function(err) {
+    console.error('[auth] fetch failed:', err, 'action:', form.action);
     msgBox.style.display = 'block';
     msgBox.style.background = 'rgba(220,38,38,0.08)';
     msgBox.style.color = '#dc2626';

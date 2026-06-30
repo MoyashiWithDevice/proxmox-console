@@ -250,19 +250,16 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, c)
 	}
 
-	if resp2.StatusCode == http.StatusSeeOther || resp2.StatusCode == http.StatusFound {
-		location := resp2.Header.Get("Location")
-		if location == "" {
-			location = "/"
+	if resp2.StatusCode == http.StatusSeeOther || resp2.StatusCode == http.StatusFound || resp2.StatusCode == http.StatusOK {
+		sessionCookie, err := performKratosLogin(email, password)
+		if err == nil {
+			log.Printf("[combined-reg] post-reg login OK, setting session cookie")
+			http.SetCookie(w, sessionCookie)
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
 		}
-		log.Printf("[combined-reg] step2 redirect to %s", location)
-		http.Redirect(w, r, rewriteLocation(location, r), http.StatusSeeOther)
-		return
-	}
-
-	if resp2.StatusCode == http.StatusOK {
-		log.Printf("[combined-reg] step2 OK, redirecting to /")
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		log.Printf("[combined-reg] post-reg login failed: %v, redirecting to /login", err)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -270,6 +267,66 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ := io.ReadAll(resp2.Body)
 	log.Printf("[combined-reg] step2 error status=%d body=%s", resp2.StatusCode, string(bodyBytes))
 	tryReturnFlowAsJSON(w, resp2.StatusCode, bodyBytes)
+}
+
+// createKratosFlowInternal creates a login/registration flow server-to-server
+// and returns the flow data + response cookies (no browser forwarding).
+func createKratosFlowInternal(flowType string) (map[string]interface{}, []*http.Cookie, error) {
+	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+"/self-service/"+flowType+"/browser", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("kratos returned %d on flow creation", resp.StatusCode)
+	}
+
+	var flow map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&flow); err != nil {
+		return nil, nil, err
+	}
+	return flow, resp.Cookies(), nil
+}
+
+// performKratosLogin authenticates with email/password and returns the session cookie.
+func performKratosLogin(email, password string) (*http.Cookie, error) {
+	flow, cookies, err := createKratosFlowInternal("login")
+	if err != nil {
+		return nil, fmt.Errorf("create login flow: %w", err)
+	}
+
+	flowID, _ := flow["id"].(string)
+	if flowID == "" {
+		return nil, fmt.Errorf("flow id not found")
+	}
+
+	csrf := extractCsrfToken(flow)
+	body := url.Values{
+		"csrf_token": {csrf},
+		"identifier": {email},
+		"password":   {password},
+		"method":     {"password"},
+	}
+
+	resp, err := kratosPost("/self-service/login?flow="+flowID, body, cookies)
+	if err != nil {
+		return nil, fmt.Errorf("login request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	for _, c := range resp.Cookies() {
+		if c.Name == "ory_kratos_session" {
+			return c, nil
+		}
+	}
+	return nil, fmt.Errorf("session cookie not found (status=%d)", resp.StatusCode)
 }
 
 // --- helpers ---

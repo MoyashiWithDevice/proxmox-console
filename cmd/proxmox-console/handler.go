@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gorilla/websocket"
-	tfexec "github.com/hashicorp/terraform-exec/tfexec"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"log"
 	"net/http"
@@ -17,232 +14,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
 )
 
 var wsUpgrader = websocket.Upgrader{
 	HandshakeTimeout: 10 * time.Second,
 	// 必要に応じてOriginを検証してください
 	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
-func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
-
-	// Kratos からユーザーIDを取得
-	kratosUserID, err := getKratosUserIDFromRequest(httpreq)
-	if err != nil {
-		failJob(jobID, "Error getting Kratos user ID:", err)
-		return
-	}
-
-	// ---------------- バリデーション----------------
-	// --- OS バリデーション ---
-	var selectedOS *OSOption
-	for i := range SettingsConf.OS {
-		if SettingsConf.OS[i].ID == req.OS {
-			selectedOS = &SettingsConf.OS[i]
-			break
-		}
-	}
-	if selectedOS == nil {
-		failJob(jobID, "Requested value is invalid【OS】 :", err)
-		return
-	}
-
-	// --- リソース範囲バリデーション ---
-	res := SettingsConf.Resources
-	if req.CPU < res.CPU.Min || req.CPU > res.CPU.Max {
-		failJob(jobID, "Requested value is invalid【CPU】 :", err)
-		return
-	}
-	if req.Memory < res.Memory.Min || req.Memory > res.Memory.Max {
-		failJob(jobID, "Requested value is invalid【Memory】 :", err)
-		return
-	}
-	if req.HDD < res.HDD.Min || req.HDD > res.HDD.Max {
-		failJob(jobID, "Requested value is invalid【HDD】 :", err)
-		return
-	}
-
-	// DB からユーザーIDを取得または作成
-	dbUserID, err := getDatabaseUserID(kratosUserID)
-	if err != nil {
-		failJob(jobID, "Error getting database user ID:", err)
-		return
-	}
-
-	// VMリクエストのハッシュを計算
-	vmhash, err := hashRequest(req)
-	if err != nil {
-		failJob(jobID, "Error hashing request:", err)
-		return
-	}
-
-	// ユーザディレクトリ配下に
-	// ハッシュ値をディレクトリ名とする実行用ディレクトリを作成
-	workdir := filepath.Join("terraform", "vms", kratosUserID, vmhash)
-	os.MkdirAll(workdir, 0755)
-
-	jobAny, _ := jobs.Load(jobID)
-	job := jobAny.(*Job)
-
-	job.Workdir = workdir
-	job.LogPath = filepath.Join(workdir, "terraform.log")
-	job.Status = "running(init)"
-	jobs.Store(jobID, job)
-
-	logFile, _ := os.Create(job.LogPath)
-	defer logFile.Close()
-
-	userPrivkey, userPubkey, err := generateSSHKeyPair()
-	if err != nil {
-		failJob(jobID, "Error creating key:", err)
-		return
-	}
-
-	agentUser := SettingsConf.Agent.User
-	if agentUser == "" {
-		agentUser = "agent"
-	}
-
-	agentPubkey := strings.TrimSpace(SettingsConf.Agent.PublicKey)
-	if agentPubkey == "" {
-		failJob(jobID, "Error missing agent public key in settings", err)
-		return
-	}
-
-	tfvars := fmt.Sprintf(`
-servername    = "%s"
-cpu           = %d
-memory        = %d
-hdd           = %d
-username      = "%s"
-template_id   = %d
-user_pubkey   =<<EOT
-%s
-EOT
-agent_user    = "%s"
-agent_pubkey  =<<EOT
-%s
-EOT
-`,
-		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
-		userPubkey, agentUser, agentPubkey,
-	)
-
-	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
-	// ルートの共通テンプレートを各VMワークディレクトリにリンク
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
-		failJob(jobID, "Error linking Terraform templates:", err)
-		return
-	}
-
-	// Terraform実行
-	tf, err := tfexec.NewTerraform(workdir, "terraform")
-	if err != nil {
-		failJob(jobID, "Error creating Terraform executor:", err)
-		return
-	}
-	tf.SetStdout(logFile)
-	tf.SetStderr(logFile)
-
-	ctx := context.Background()
-
-	// init
-	if err := tf.Init(ctx, tfexec.Upgrade(true)); err != nil {
-		failJob(jobID, "Error during initialization:", err)
-		return
-	}
-
-	job.Status = "running(apply)"
-	jobs.Store(jobID, job)
-
-	// apply
-	if err := tf.Apply(ctx,
-		tfexec.VarFile("runtime.tfvars"),
-	); err != nil {
-		failJob(jobID, "Error applying Terraform configuration:", err)
-		return
-	}
-
-	// Terraform state から VM ID とノード名を取得
-	vmID, nodeName, err := getVMIDAndNode(workdir)
-	if err != nil {
-		failJob(jobID, "Error getting VM ID and node:", err)
-		return
-	}
-
-	// DB に VM を記録
-	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
-	if err != nil {
-		failJob(jobID, "Error creating VM in database:", err)
-		return
-	}
-
-	// VM の秘密鍵を一時的にワークディレクトリに保存
-	userKeyPath := filepath.Join(workdir, "user_id_rsa")
-	if err := os.WriteFile(userKeyPath, userPrivkey, 0600); err != nil {
-		fmt.Println("Warning: failed to write user private key:", err)
-	}
-
-	job.VMID = vmID
-	job.NodeName = nodeName
-
-	// 完了後は DB で completed に変更してからログを破棄する
-	if err := updateVMStatus(createdVM.ID, "completed"); err != nil {
-		failJob(jobID, "Error updating VM status in database:", err)
-		return
-	}
-
-	// TODO: ログの破棄と/var/lib/vz/snippetsフォルダ内のスニペットファイルの削除
-	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
-		fmt.Println("Error removing log file:", err)
-	}	
-
-	if job.VMID != 0 {
-		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
-			job.IP = vm.IP
-		}
-	}
-	job.Status = "done"
-	jobs.Store(jobID, job)
-}
-
-func failJob(jobID, msg string, args ...any) {
-	fmt.Printf(msg+"\n", args...)
-	jobAny, _ := jobs.Load(jobID)
-	if job, ok := jobAny.(*Job); ok {
-		job.Status = "error"
-		jobs.Store(jobID, job)
-	}
-}
-
-func ensureTerraformTemplateLinks(workdir string) error {
-	templateFiles := []string{
-		"provider.tf",
-		"variables.tf",
-		"snippets.tf",
-		"vm.tf",
-		"cloud-config.yaml",
-	}
-
-	for _, name := range templateFiles {
-		dst := filepath.Join(workdir, name)
-		if _, err := os.Lstat(dst); err == nil {
-			continue
-		}
-
-		src := filepath.Join("terraform", name)
-		rel, err := filepath.Rel(workdir, src)
-		if err != nil {
-			rel = src
-		}
-
-		if err := os.Symlink(rel, dst); err != nil {
-			return fmt.Errorf("failed to create symlink for %s: %w", name, err)
-		}
-	}
-
-	return nil
 }
 
 // getVMIDAndNode は Terraform state から VM ID とノード名を取得します
@@ -270,6 +50,74 @@ func getVMIDAndNode(workdir string) (int, string, error) {
 	return 0, "", fmt.Errorf("vm not found in tfstate")
 }
 
+// GET: /api/vms
+func userVMListHandler(w http.ResponseWriter, r *http.Request) {
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	vms, err := listUserVMs(userID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	var result []VMResponse
+	for _, vm := range vms {
+		if strings.ToLower(vm.Status) == "creating" {
+			continue
+		}
+		result = append(result, VMResponse{
+			Type:       "vm",
+			VMID:       vm.VMID,
+			CPU:        vm.CPU,
+			Memory:     vm.Memory,
+			HDD:        vm.HDD,
+			Servername: vm.Servername,
+
+			// TODO: 後でOSを表示させる処理を追加するなら
+			// コメントアウトを外してください。
+			// OS:			 ""
+			Status: vm.Status,
+			IP:     vm.IP,
+		})
+	}
+
+	jobs.Range(func(key, value interface{}) bool {
+		job := value.(*Job)
+		if job.OwnerID != userID || job.Status == "done" {
+			return true
+		}
+		result = append(result, VMResponse{
+			Type:       "job",
+			JOBID:      key.(string),
+			Status:     job.Status,
+			Servername: job.Servername,
+		})
+		return true
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// PUT, PATCH, DELETE: /api/vm
+func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == http.MethodPut {
+		createVMHandler(w, r)
+	} else if r.Method == http.MethodPatch {
+		updateVMHandler(w, r)
+	} else if r.Method == http.MethodDelete {
+		deleteVMHandler(w, r)
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// PUT: /api/vm
 func createVMHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -283,13 +131,10 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := VMRequest{
-		CPU:        atoiSafe(r.FormValue("cpu")),
-		Memory:     atoiSafe(r.FormValue("memory")),
-		HDD:        atoiSafe(r.FormValue("hdd")),
-		Servername: r.FormValue("servername"),
-		Username:   r.FormValue("username"),
-		OS:         r.FormValue("os"),
+	var req VMRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
@@ -304,324 +149,41 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
 }
 
-func userVMListHandler(w http.ResponseWriter, r *http.Request) {
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	vms, err := listUserVMs(userID)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	type vmResponse struct {
-		Type       string `json:"type"`
-		Name       string `json:"Name,omitempty"`
-		VMID       int    `json:"VMID,omitempty"`
-		IP         string `json:"IP,omitempty"`
-		Memory     int    `json:"Memory,omitempty"`
-		Cores      int    `json:"Cores,omitempty"`
-		Hdd        int    `json:"Hdd,omitempty"`
-		Status     string `json:"status,omitempty"`
-		Servername string `json:"servername,omitempty"`
-		ID         string `json:"id,omitempty"`
-	}
-
-	var result []vmResponse
-	for _, vm := range vms {
-		if strings.ToLower(vm.Status) == "creating" {
-			continue
-		}
-		result = append(result, vmResponse{
-			Type:   "vm",
-			Name:   vm.Name,
-			VMID:   vm.VMID,
-			IP:     vm.IP,
-			Memory: vm.Memory,
-			Cores:  vm.Cores,
-			Hdd:    vm.Hdd,
-			Status: vm.Status,
-		})
-	}
-
-	jobs.Range(func(key, value interface{}) bool {
-		job := value.(*Job)
-		if job.OwnerID != userID || job.Status == "done" {
-			return true
-		}
-		result = append(result, vmResponse{
-			Type:       "job",
-			ID:         key.(string),
-			Status:     job.Status,
-			Servername: job.Servername,
-			IP:         job.IP,
-		})
-		return true
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodDelete {
-		deleteVMHandler(w, r)
-		return
-	}
-
-	if r.Method != http.MethodGet {
+// PATCH: /api/vm
+func updateVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if jobID := r.URL.Query().Get("job_id"); jobID != "" {
-		vmJobStatusHandler(w, r, jobID)
+	userID, _ := getKratosUserIDFromRequest(r)
+
+	var req VMRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	vmidStr := r.URL.Query().Get("vmid")
-	if vmidStr == "" {
+	if req.VMID == 0 {
 		http.Error(w, "missing vmid", 400)
 		return
 	}
 
-	vmid, _ := strconv.Atoi(vmidStr)
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: userID, VMID: req.VMID})
 
-	vms, err := listUserVMs(userID)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	for _, vm := range vms {
-		if vm.VMID == vmid {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(vm)
-			return
-		}
-	}
-
-	http.Error(w, "vm not found", 404)
-}
-
-func vmJobStatusHandler(w http.ResponseWriter, r *http.Request, jobID string) {
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	jobAny, ok := jobs.Load(jobID)
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	job := jobAny.(*Job)
-	if job.OwnerID != userID {
-		http.Error(w, "unauthorized", http.StatusForbidden)
-		return
-	}
-
-	logBytes, _ := os.ReadFile(job.LogPath)
-
-	resp := map[string]interface{}{
-		"status": job.Status,
-		"ip":     job.IP,
-		"log":    string(logBytes),
-	}
-	if job.VMID != 0 {
-		resp["vmid"] = job.VMID
-		if _, err := os.Stat(filepath.Join(job.Workdir, "user_id_rsa")); err == nil {
-			resp["key_available"] = true
-		} else {
-			resp["key_available"] = false
-		}
-	}
+	// Run VM update in background
+	go runUpdateVMJob(jobID, userID, req.VMID, req.Servername, req.CPU, req.Memory, req.HDD)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "modified",
+	})
 }
 
-func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if jobID := r.URL.Query().Get("job_id"); jobID != "" {
-		vmJobStatusHandler(w, r, jobID)
-		return
-	}
-
-	userID, err := getKratosUserIDFromRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	vmidStr := r.URL.Query().Get("vmid")
-	if vmidStr == "" {
-		http.Error(w, "missing vmid", http.StatusBadRequest)
-		return
-	}
-
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		http.Error(w, "invalid vmid", http.StatusBadRequest)
-		return
-	}
-
-	dbUserID, err := getDatabaseUserID(userID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	vm, err := getVMByProxmoxID(vmid)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "vm not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		http.Error(w, "unauthorized", http.StatusForbidden)
-		return
-	}
-
-	keyPath := filepath.Join(vm.TFWorkdir, "user_id_rsa")
-	keyBytes, err := os.ReadFile(keyPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "key not available", http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"vm-%d-id_rsa\"", vmid))
-	w.Header().Set("Cache-Control", "no-store")
-
-	if _, err := w.Write(keyBytes); err != nil {
-		fmt.Println("Error writing private key response:", err)
-		return
-	}
-
-	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
-		fmt.Println("Warning: failed to remove user private key after download:", err)
-	}
-}
-
-func atoiSafe(s string) int {
-	i, _ := strconv.Atoi(s)
-	return i
-}
-
-func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
-}
-
-func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
-	path := filepath.Join(workdir, "runtime.tfvars")
-
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	lines := strings.Split(string(b), "\n")
-	out := make([]string, 0, len(lines))
-
-	for _, line := range lines {
-		trim := strings.TrimSpace(line)
-
-		switch {
-		case strings.HasPrefix(trim, "servername"):
-			if name != "" {
-				out = append(out, fmt.Sprintf(`servername    = "%s"`, name))
-			} else {
-				out = append(out, line)
-			}
-
-		case strings.HasPrefix(trim, "cpu"):
-			if cpu > 0 {
-				out = append(out, fmt.Sprintf(`cpu           = %d`, cpu))
-			} else {
-				out = append(out, line)
-			}
-
-		case strings.HasPrefix(trim, "memory"):
-			if memory > 0 {
-				out = append(out, fmt.Sprintf(`memory        = %d`, memory))
-			} else {
-				out = append(out, line)
-			}
-
-		case strings.HasPrefix(trim, "hdd"):
-			if hdd > 0 {
-				out = append(out, fmt.Sprintf(`hdd           = %d`, hdd))
-			} else {
-				out = append(out, line)
-			}
-
-		default:
-			out = append(out, line)
-		}
-	}
-
-	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0600)
-}
-
-func applyTerraform(workdir string) error {
-	tf, err := tfexec.NewTerraform(workdir, "terraform")
-	if err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-
-	if err := tf.Init(ctx); err != nil {
-		return err
-	}
-
-	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
-}
-
-func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
-	dbUserID, err := getDatabaseUserID(kratosID)
-	if err != nil {
-		return "", err
-	}
-
-	vm, err := getVMByProxmoxID(vmid)
-	if err != nil {
-		return "", err
-	}
-
-	if vm.UserID != dbUserID {
-		return "", fmt.Errorf("unauthorized")
-	}
-
-	return vm.TFWorkdir, nil
-}
-
+// DELETE: /api/vm
 func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -634,14 +196,13 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vmidStr := r.URL.Query().Get("vmid")
-	if vmidStr == "" {
-		http.Error(w, "missing vmid", http.StatusBadRequest)
+	var req VMRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
+	if req.VMID == 0 {
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
@@ -652,7 +213,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(req.VMID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "vm not found", http.StatusNotFound)
@@ -672,7 +233,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := deleteVMByProxmoxID(vmid); err != nil {
+	if err := deleteVMByProxmoxID(req.VMID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
@@ -690,146 +251,32 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
-	workdir, err := getVMWorkdirForUser(userID, vmid)
-	if err != nil {
-		return err
+// GET: /api/jobs
+func listJobsHandler(w http.ResponseWriter, r *http.Request) {
+	type jobResp struct {
+		ID         string `json:"id"`
+		Status     string `json:"status"`
+		IP         string `json:"ip"`
+		Servername string `json:"servername"`
 	}
 
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
-		return err
-	}
-
-	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
-		return err
-	}
-
-	return applyTerraform(workdir)
-}
-
-func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cpu, memory, hdd int) {
-	jobAny, _ := jobs.Load(jobID)
-	job := jobAny.(*Job)
-
-	job.Status = "running(modify)"
-	job.VMID = vmid
-	job.LogPath = filepath.Join("/tmp", jobID+".log")
-	jobs.Store(jobID, job)
-
-	logFile, _ := os.Create(job.LogPath)
-	defer logFile.Close()
-
-	err := updateVMResources(userID, servername, vmid, cpu, memory, hdd)
-	if err != nil {
-		job.Status = "error"
-		fmt.Fprintf(logFile, "Error: %v\n", err)
-	} else {
-		job.Status = "done"
-	}
-	jobs.Store(jobID, job)
-}
-
-func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
-	key, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, err
-	}
-
-	config := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	return ssh.Dial("tcp", ip+":22", config)
-}
-
-func updateVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	userID, _ := getKratosUserIDFromRequest(r)
-
-	var req struct {
-		VMID   int    `json:"vmid"`
-		Name   string `json:"name"`
-		Cores  int    `json:"cores"`
-		Memory int    `json:"memory"`
-		HDD    int    `json:"hdd"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-
-	if req.VMID == 0 {
-		http.Error(w, "missing vmid", 400)
-		return
-	}
-
-	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Name, OwnerID: userID, VMID: req.VMID})
-
-	// Run VM update in background
-	go runUpdateVMJob(jobID, userID, req.VMID, req.Name, req.Cores, req.Memory, req.HDD)
+	var result []VMResponse
+	jobs.Range(func(key, value interface{}) bool {
+		j := value.(*Job)
+		result = append(result, VMResponse{
+			JOBID:      key.(string),
+			Status:     j.Status,
+			Servername: j.Servername,
+			IP:         j.IP,
+		})
+		return true
+	})
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"job_id": jobID,
-		"status": "modified",
-	})
+	json.NewEncoder(w).Encode(result)
 }
 
-type OSOptionPublic struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-}
-
-func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	// 内部で使用するOSテンプレートID以外を返す
-	osList := make([]OSOptionPublic, len(SettingsConf.OS))
-	for i, o := range SettingsConf.OS {
-		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
-	}
-
-	json.NewEncoder(w).Encode(map[string]any{
-		"cpu":    SettingsConf.Resources.CPU,
-		"memory": SettingsConf.Resources.Memory,
-		"hdd":    SettingsConf.Resources.HDD,
-		"os":     osList,
-	})
-}
-
-type flushWriter struct {
-	w http.ResponseWriter
-}
-
-func (fw flushWriter) Write(p []byte) (int, error) {
-	n, err := fw.w.Write(p)
-
-	if f, ok := fw.w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	return n, err
-}
-
+// GET: /api/vm/terminal
 func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 認証 ──────────────────────────────────────────────────────────────
@@ -1011,82 +458,370 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
+// POST: /api/vm/state
 func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "method not allowed",
+		})
 		return
 	}
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "unauthorized",
+		})
 		return
 	}
-	var req struct{
-		vmid  string
-		state string
+
+	var req struct {
+		VMID  int    `json:"vmid"`
+		State string `json:"state"`
 	}
-	req.vmid = r.FormValue("vmid")
-	req.state = r.FormValue("state")
+
+	vmid, err := strconv.Atoi(r.FormValue("vmid"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "invalid request",
+		})
+		return
+	}
+
+	req.VMID = vmid
+	req.State = r.FormValue("state")
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "invalid request",
+		})
 		return
 	}
 
-	if req.vmid == "" {
+	if req.VMID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "missing vmid"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "missing vmid",
+		})
 		return
 	}
-	vmidInt, convErr := strconv.Atoi(req.vmid)
-	if convErr != nil {
+
+	if req.State != "start" && req.State != "stop" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid vmid"})
-		return
-	}
-	if req.state != "start" && req.state != "stop"{
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid state"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "invalid state",
+		})
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "internal"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "internal",
+		})
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmidInt)
+	vm, err := getVMByProxmoxID(req.VMID)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "vm not found"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "vm not found",
+		})
 		return
-	}
-	if vm.UserID != dbUserID {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
-		return
-	}
-	
-	if req.state == "start" {
-		err = startProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
-	} else if req.state == "stop" {
-		err = stopProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID)
 	}
 
-	if err != nil{
+	if vm.UserID != dbUserID {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "forbidden",
+		})
+		return
+	}
+
+	switch req.State {
+	case "start":
+		err = startProxmoxVM(
+			context.Background(),
+			vm.NodeName,
+			vm.ProxmoxVMID,
+		)
+	case "stop":
+		err = stopProxmoxVM(
+			context.Background(),
+			vm.NodeName,
+			vm.ProxmoxVMID,
+		)
+	}
+
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": req.State + "ed",
+	})
+}
+
+func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vmidStr := r.URL.Query().Get("vmid")
+	if vmidStr == "" {
+		http.Error(w, "missing vmid", http.StatusBadRequest)
+		return
+	}
+
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
+		http.Error(w, "invalid vmid", http.StatusBadRequest)
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "vm not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if vm.UserID != dbUserID {
+		http.Error(w, "unauthorized", http.StatusForbidden)
+		return
+	}
+
+	keyPath := filepath.Join(vm.TFWorkdir, "user_id_rsa")
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "key not available", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"vm-%d-id_rsa\"", vmid))
+	w.Header().Set("Cache-Control", "no-store")
+
+	if _, err := w.Write(keyBytes); err != nil {
+		fmt.Println("Error writing private key response:", err)
+		return
+	}
+
+	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+		fmt.Println("Warning: failed to remove user private key after download:", err)
+	}
+}
+
+func atoiSafe(s string) int {
+	i, _ := strconv.Atoi(s)
+	return i
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
+	path := filepath.Join(workdir, "runtime.tfvars")
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(b), "\n")
+	out := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+
+		switch {
+		case strings.HasPrefix(trim, "servername"):
+			if name != "" {
+				out = append(out, fmt.Sprintf(`servername    = "%s"`, name))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "cpu"):
+			if cpu > 0 {
+				out = append(out, fmt.Sprintf(`cpu           = %d`, cpu))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "memory"):
+			if memory > 0 {
+				out = append(out, fmt.Sprintf(`memory        = %d`, memory))
+			} else {
+				out = append(out, line)
+			}
+
+		case strings.HasPrefix(trim, "hdd"):
+			if hdd > 0 {
+				out = append(out, fmt.Sprintf(`hdd           = %d`, hdd))
+			} else {
+				out = append(out, line)
+			}
+
+		default:
+			out = append(out, line)
+		}
+	}
+
+	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0600)
+}
+
+func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
+	dbUserID, err := getDatabaseUserID(kratosID)
+	if err != nil {
+		return "", err
+	}
+
+	vm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		return "", err
+	}
+
+	if vm.UserID != dbUserID {
+		return "", fmt.Errorf("unauthorized")
+	}
+
+	return vm.TFWorkdir, nil
+}
+
+func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
+	workdir, err := getVMWorkdirForUser(userID, vmid)
+	if err != nil {
+		return err
+	}
+
+	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+		return err
+	}
+
+	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
+		return err
+	}
+
+	return applyTerraform(workdir)
+}
+
+func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cpu, memory, hdd int) {
+	jobAny, _ := jobs.Load(jobID)
+	job := jobAny.(*Job)
+
+	job.Status = "running(modify)"
+	job.VMID = vmid
+	job.LogPath = filepath.Join("/tmp", jobID+".log")
+	jobs.Store(jobID, job)
+
+	logFile, _ := os.Create(job.LogPath)
+	defer logFile.Close()
+
+	err := updateVMResources(userID, servername, vmid, cpu, memory, hdd)
+	if err != nil {
+		job.Status = "error"
+		fmt.Fprintf(logFile, "Error: %v\n", err)
+	} else {
+		job.Status = "done"
+	}
+	jobs.Store(jobID, job)
+}
+
+func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	return ssh.Dial("tcp", ip+":22", config)
+}
+
+// GET: /api/settings
+func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	type OSOptionPublic struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+	}
+
+	// 内部で使用するOSテンプレートID以外を返す
+	osList := make([]OSOptionPublic, len(SettingsConf.OS))
+	for i, o := range SettingsConf.OS {
+		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"cpu":    SettingsConf.Resources.CPU,
+		"memory": SettingsConf.Resources.Memory,
+		"hdd":    SettingsConf.Resources.HDD,
+		"os":     osList,
+	})
+}
+
+type flushWriter struct {
+	w http.ResponseWriter
+}
+
+func (fw flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+
+	if f, ok := fw.w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	return n, err
 }

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func getKratosUserIDFromRequest(r *http.Request) (string, error) {
@@ -59,24 +61,26 @@ func getDatabaseUserID(kratosID string) (int, error) {
 }
 
 func hashRequest(req *VMRequest) (string, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+
 	safe := struct {
-		CPU        int
-		Memory     int
-		HDD        int
-		Servername string
-		Username   string
+		VM     *VMRequest
+		Time   time.Time
+		Random string
 	}{
-		CPU:        req.CPU,
-		Memory:     req.Memory,
-		HDD:        req.HDD,
-		Servername: req.Servername,
-		Username:   req.Username,
+		VM:     req,
+		Time:   time.Now(),
+		Random: hex.EncodeToString(random),
 	}
 
 	b, err := json.Marshal(safe)
 	if err != nil {
 		return "", err
 	}
+
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:]), nil
 }

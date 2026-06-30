@@ -237,26 +237,18 @@ function saveVM() {
     }).catch(function() { _saving = false; alert("Failed to send request"); renderMain(); });
 }
 
-function pollJobStatus() {
-  if (!_jobId) return;
-  api('/api/vm?job_id=' + encodeURIComponent(_jobId))
-    .then(function(data) {
-      _jobStatus = data.status || "\u2014";
-      if (data.status === "done") {
-        api('/api/vm?vmid=' + _vm.VMID)
-          .then(function(vmData) { _vm = vmData; _saving = false; _editing = false; _jobId = null; _jobStatus = "\u2014"; renderMain(); })
-          .catch(function() { _saving = false; _jobId = null; });
-      } else if (data.status === "error") {
-        _saving = false; _jobId = null; _jobStatus = "\u2014";
-        alert("Failed to update VM"); renderMain();
-      }
-    }).catch(function() {});
-}
-
 function deleteVM() {
   if (!confirm("Are you sure? This action cannot be undone.")) return;
   _deleting = true; renderMain();
-  fetch('/api/vm?vmid=' + _vm.VMID, { method: 'DELETE', credentials: 'include' })
+  
+  fetch('/api/vm', { 
+    method: 'DELETE', 
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ vmid: _vm.VMID })
+  })
     .then(function(response) {
       if (response.ok) { window.location.href = "/"; return; }
       return response.text().then(function(body) { _deleting = false; alert("Deletion failed: " + body); renderMain(); });
@@ -264,46 +256,71 @@ function deleteVM() {
 }
 
 function init() {
-  if (id) {
-    api('/api/vm?vmid=' + id)
-      .then(function(data) { _vm = data; resetFields(); render(); })
-      .catch(function() { _vm = null; render(); });
-  }
-
   function fetchItems() {
     api('/api/vms')
-      .then(function(data) { _items = data || []; renderSidebar(); })
+      .then(function(data) { 
+        _items = data || []; 
+        renderSidebar(); 
+        
+        // 一覧を更新した後に、現在の状態も連動して更新する
+        updateStateFromItems();
+      })
       .catch(function() {});
   }
 
- function fetchStatus() {
-    var wasAtBottom = true;
+  function updateStateFromItems() {
     var logEl = document.getElementById("job-log");
-    if (logEl) {
-      wasAtBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 1;
+    var wasAtBottom = logEl ? (logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 1) : true;
+
+    if (id) {
+      var matchedVmById = _items.find(function(item) {
+        return item.vmid === id; // もしAPI側のキーが VMID なら item.VMID に適宜変更してください
+      });
+      if (matchedVmById) {
+        _vm = matchedVmById;
+        resetFields();
+      } else {
+        _vm = null;
+      }
     }
-    if (!jobId) { _s = "\u2014"; _log = ""; _jvmid = null; renderMain(); return; }
-    api('/api/vm?job_id=' + encodeURIComponent(jobId))
-      .then(function(data) {
-        _s = data.status || "\u2014";
-        _log = data.log || "";
-        var prevAtBottom = wasAtBottom;
-        if (data.vmid) {
-          _jvmid = data.vmid;
-          if (!id) {
-            api('/api/vm?vmid=' + data.vmid)
-              .then(function(vmData) { _vm = vmData; resetFields(); renderMain(); autoScrollLog(prevAtBottom); })
-              .catch(function() { _vm = null; renderMain(); autoScrollLog(prevAtBottom); });
-          }
+
+    // Job IDがない場合の初期化処理
+    if (!jobId) { 
+      _s = "\u2014"; 
+      _log = ""; 
+      _jvmid = null; 
+      render(); 
+      return; 
+    }
+
+    // _items の中から、現在の jobId に一致するデータを検索
+    // (もし items の中に job_id がない場合は、すでに特定できている _jvmid や id で find してください)
+    var matchedVm = _items.find(function(item) {
+      return item.job_id === jobId; 
+    });
+
+    if (matchedVmByJob) {
+      _s = matchedVmByJob.status || "\u2014";
+      _log = matchedVmByJob.log || "";
+      
+      if (matchedVmByJob.vmid) {
+        _jvmid = matchedVmByJob.vmid;
+        // id が指定されていない画面（新規作成直後など）であれば、このJobのVM情報を _vm にセット
+        if (!id) {
+          _vm = matchedVmByJob; 
+          resetFields();
         }
-        renderMain();
-        autoScrollLog(prevAtBottom);
-      }).catch(function() {});
+      }
+    } else {
+      if (!id) { _vm = null; }
+    }
+
+    renderMain();
+    autoScrollLog(wasAtBottom);
   }
 
   fetchItems();
-  fetchStatus();
-  setInterval(function() { fetchItems(); fetchStatus(); }, 5000);
+  setInterval(function() { fetchItems(); }, 10000);
 
   if (jobId) {
     setInterval(function() {

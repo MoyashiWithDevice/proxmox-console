@@ -76,7 +76,10 @@ function renderAuthForm() {
       if (inputType === 'hidden') {
         html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
       } else if (inputType === 'submit') {
-        html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px"' + (value?'>'+escapeHTML(value):'>'+escapeHTML(labelText)) + '</button>';
+        html += '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px"';
+        if (name) html += ' name="' + escapeHTML(name) + '"';
+        if (value) html += ' value="' + escapeHTML(value) + '"';
+        html += '>' + escapeHTML(labelText || value) + '</button>';
       } else {
         html += '<div style="margin-bottom:18px">';
         if (labelText) {
@@ -102,63 +105,7 @@ function renderAuthForm() {
 
   html += '</div></div>';
 
-  html += '<div id="auth-msg" style="display:none;margin-top:20px;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5"></div>';
-
   return html;
 }
 
-function handleFormSubmit(e) {
-  e.preventDefault();
-  var form = document.getElementById('auth-form');
-  var formData = new FormData(form);
-  var msgBox = document.getElementById('auth-msg');
-
-  msgBox.style.display = 'none';
-
-  fetch(form.action, {
-    method: form.method,
-    body: formData,
-    redirect: 'manual'
-  }).then(function(res) {
-    if (res.type === 'opaqueredirect' || res.status === 303 || res.status === 302) {
-      window.location.href = res.headers.get('Location') || '/';
-      return;
-    }
-    if (res.ok) {
-      window.location.href = '/';
-      return;
-    }
-    return res.text().then(function(text) {
-      try {
-        var data = JSON.parse(text);
-        if (data.redirect_browser_to) {
-          window.location.href = data.redirect_browser_to;
-          return;
-        }
-        FLOW = data;
-        render();
-        bindForm();
-      } catch(e) {
-        msgBox.style.display = 'block';
-        msgBox.style.background = 'rgba(220,38,38,0.08)';
-        msgBox.style.color = '#dc2626';
-        msgBox.textContent = 'Authentication failed. Please try again.';
-      }
-    });
-  }).catch(function() {
-    msgBox.style.display = 'block';
-    msgBox.style.background = 'rgba(220,38,38,0.08)';
-    msgBox.style.color = '#dc2626';
-    msgBox.textContent = 'Network error. Please try again.';
-  });
-}
-
-function bindForm() {
-  var form = document.getElementById('auth-form');
-  if (form) {
-    form.addEventListener('submit', handleFormSubmit);
-  }
-}
-
 render();
-bindForm();

@@ -73,8 +73,15 @@ function fetchVMs() {
 }
 
 function vmAction(vmid, action) {
-  api('/api/vm?' + new URLSearchParams({ vmid: vmid, action: action }), { method: 'POST' })
-    .then(function() { fetchVMs(); })
+  // 引数の action (PUT, PATCH, DELETE) をそのまま method に使用します
+  api('/api/vm', { 
+    method: action.toUpperCase(), // 念のため大文字に統一
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ vmid: vmid })
+  })
+    .then(function() { fetchVMs(); }) // 前述の流れに合わせて fetchItems() にしています。既存が fetchVMs() なら戻してください。
     .catch(function() {});
 }
 

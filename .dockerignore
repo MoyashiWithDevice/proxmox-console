@@ -1,6 +1,14 @@
 .git
 .github
+.vscode
 .claude
+.idea
+tmp
+dist
+coverage
+*.log
+*.out
+*.test
 *.env
 *proxmox.auto.tfvars
 *config.yaml

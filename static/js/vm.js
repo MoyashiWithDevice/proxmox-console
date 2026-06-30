@@ -98,9 +98,6 @@ function renderJobProgress() {
   return html;
 }
 
-function renderVMEditor() {
-}
-
 /* ===== Terraform log colorizer ===== */
 function colorizeTerraformLog(text) {
   if (typeof text !== 'string') return String(text);
@@ -228,13 +225,33 @@ function downloadKey() {
 function saveVM() {
   var newHdd = parseInt(_hdd, 10);
   if (newHdd < _vm.Hdd) { alert("Cannot decrease disk size"); return; }
+
+  // 変更されたフィールドのみ収集
+  var patch = { vmid: _vm.VMID };
+  if (_name !== (_vm.Name || ''))          patch.name   = _name;
+  if (parseInt(_cores, 10) !== _vm.Cores)  patch.cores  = parseInt(_cores, 10);
+  if (parseInt(_mem,   10) !== _vm.Memory) patch.memory = parseInt(_mem, 10);
+  if (newHdd !== _vm.Hdd)                  patch.hdd    = newHdd;
+
+  // vmid 以外に変更がなければ何もしない
+  if (Object.keys(patch).length <= 0) { 
+    _editing = false; 
+    renderMain(); 
+    return; 
+  }
+
   _saving = true;
   renderMain();
-  api('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vmid: _vm.VMID, name: _name, cores: parseInt(_cores,10), memory: parseInt(_mem,10), hdd: newHdd }) })
+  api('/api/vm', { 
+    method: 'PATCH', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(patch) 
+  })
     .then(function(data) {
       if (data.job_id) { _jobId = data.job_id; _jobStatus = "running"; pollJobStatus(); }
       else { _saving = false; _editing = false; renderMain(); }
-    }).catch(function() { _saving = false; alert("Failed to send request"); renderMain(); });
+    })
+    .catch(function() { _saving = false; alert("Failed to send request"); renderMain(); });
 }
 
 function deleteVM() {

@@ -66,7 +66,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 
 	var result []VMResponse
 	for _, vm := range vms {
-		if strings.ToLower(vm.Status) == "creating" {
+		if strings.ToLower(vm.Status) == "creating" || strings.ToLower(vm.Status) == "modifying" {
 			continue
 		}
 		result = append(result, VMResponse{
@@ -173,7 +173,7 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: userID, VMID: req.VMID})
 
 	// Run VM update in background
-	go runUpdateVMJob(jobID, userID, req.VMID, req.Servername, req.CPU, req.Memory, req.HDD)
+	go runUpdateVMJob(jobID, userID, req)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -656,13 +656,22 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-func rewriteTFVars(workdir, name string, cpu, memory, hdd int) error {
+func rewriteTFVars(workdir string, req VMRequest) error {
+	// 【追加】すべてのリクエスト値が空または0（変更なし）の場合は、何もせず正常終了する
+	if req.Servername == "" && req.CPU == 0 && req.Memory == 0 && req.HDD == 0 {
+		return nil
+	}
+
 	path := filepath.Join(workdir, "runtime.tfvars")
 
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
+	name := req.Servername
+	cpu := req.CPU
+	memory := req.Memory
+	hdd := req.HDD
 
 	lines := strings.Split(string(b), "\n")
 	out := make([]string, 0, len(lines))
@@ -725,8 +734,8 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 	return vm.TFWorkdir, nil
 }
 
-func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) error {
-	workdir, err := getVMWorkdirForUser(userID, vmid)
+func updateVMResources(userID string, req VMRequest) error {
+	workdir, err := getVMWorkdirForUser(userID, req.VMID)
 	if err != nil {
 		return err
 	}
@@ -735,26 +744,26 @@ func updateVMResources(userID, servername string, vmid, cpu, memory, hdd int) er
 		return err
 	}
 
-	if err := rewriteTFVars(workdir, servername, cpu, memory, hdd); err != nil {
+	if err := rewriteTFVars(workdir, req); err != nil {
 		return err
 	}
+	updateVMStatus(req.VMID, "modifying")
 
 	return applyTerraform(workdir)
 }
 
-func runUpdateVMJob(jobID string, userID string, vmid int, servername string, cpu, memory, hdd int) {
+func runUpdateVMJob(jobID string, userID string, req VMRequest) {
 	jobAny, _ := jobs.Load(jobID)
 	job := jobAny.(*Job)
-
 	job.Status = "running(modify)"
-	job.VMID = vmid
+	job.VMID = req.VMID
 	job.LogPath = filepath.Join("/tmp", jobID+".log")
 	jobs.Store(jobID, job)
 
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
 
-	err := updateVMResources(userID, servername, vmid, cpu, memory, hdd)
+	err := updateVMResources(userID, req)
 	if err != nil {
 		job.Status = "error"
 		fmt.Fprintf(logFile, "Error: %v\n", err)

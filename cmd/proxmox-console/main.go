@@ -36,9 +36,6 @@ func main() {
 	}
 	defer closeDB()
 
-	// テンプレートパース
-	tmpl := template.Must(template.ParseGlob("templates/*.html"))
-
 	// 静的CSSファイルは認証なしで配信
 	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./static/css"))))
 
@@ -50,19 +47,19 @@ func main() {
 
 		// ルートは dashboard.html を表示
 		if r.URL.Path == "/" {
-			tmpl.ExecuteTemplate(w, "dashboard.html", nil)
+			renderPage(w, "dashboard.html", nil)
 			return
 		}
 
 		// 新しいテンプレートルート
 		if r.URL.Path == "/vm" || r.URL.Path == "/info" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
-			tmpl.ExecuteTemplate(w, r.URL.Path[1:]+".html", nil)
+			renderPage(w, r.URL.Path[1:]+".html", nil)
 			return
 		}
 
 		// Terminal テンプレート（vmid パラメータ付き）
 		if r.URL.Path == "/terminal" {
-			tmpl.ExecuteTemplate(w, "terminal.html", map[string]string{
+			renderPage(w, "terminal.html", map[string]string{
 				"VMID": r.URL.Query().Get("vmid"),
 			})
 			return
@@ -181,6 +178,19 @@ func runCmdWithLog(cmd *exec.Cmd, logFile *os.File) ([]byte, error) {
 	}
 
 	return buf.Bytes(), err
+}
+
+func renderPage(w http.ResponseWriter, page string, data interface{}) {
+	tmpl, err := template.ParseFiles(
+		"templates/_base.html",
+		"templates/_icon.html",
+		"templates/"+page,
+	)
+	if err != nil {
+		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.ExecuteTemplate(w, page, data)
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

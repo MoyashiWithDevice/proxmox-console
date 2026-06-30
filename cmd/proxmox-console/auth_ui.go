@@ -18,6 +18,39 @@ var authTmpl = template.Must(template.ParseFiles("templates/auth.html"))
 
 var errTmpl = template.Must(template.ParseGlob("templates/*.html"))
 
+// createKratosFlow creates a new login/registration flow by calling Kratos
+// server-side and forwards Set-Cookie headers to the browser.
+func createKratosFlow(flowType string, w http.ResponseWriter, r *http.Request) (map[string]interface{}, error) {
+	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+"/self-service/"+flowType+"/browser", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	for _, c := range r.Cookies() {
+		req.AddCookie(c)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	for _, c := range resp.Header["Set-Cookie"] {
+		w.Header().Add("Set-Cookie", c)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("kratos returned %d on flow creation", resp.StatusCode)
+	}
+
+	var flow map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&flow); err != nil {
+		return nil, err
+	}
+	return flow, nil
+}
+
 func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+apiPath, nil)
 	if err != nil {
@@ -44,12 +77,19 @@ func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, e
 func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/login/browser", http.StatusFound)
+		flow, err := createKratosFlow("login", w, r)
+		if err != nil {
+			http.Error(w, "Failed to create login flow", http.StatusServiceUnavailable)
+			return
+		}
+		flowJSON, _ := json.Marshal(flow)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		authTmpl.ExecuteTemplate(w, "auth.html", authPageData{Title: "Sign in", FlowJSON: template.JS(flowJSON), IsRegistration: false})
 		return
 	}
 	flow, err := fetchKratosFlow("/self-service/login/flows?id="+flowID, r)
 	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/login/browser", http.StatusFound)
+		http.Error(w, "Failed to fetch login flow", http.StatusServiceUnavailable)
 		return
 	}
 	flowJSON, _ := json.Marshal(flow)
@@ -60,12 +100,19 @@ func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/registration/browser", http.StatusFound)
+		flow, err := createKratosFlow("registration", w, r)
+		if err != nil {
+			http.Error(w, "Failed to create registration flow", http.StatusServiceUnavailable)
+			return
+		}
+		flowJSON, _ := json.Marshal(flow)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		authTmpl.ExecuteTemplate(w, "auth.html", authPageData{Title: "Create account", FlowJSON: template.JS(flowJSON), IsRegistration: true})
 		return
 	}
 	flow, err := fetchKratosFlow("/self-service/registration/flows?id="+flowID, r)
 	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/registration/browser", http.StatusFound)
+		http.Error(w, "Failed to fetch registration flow", http.StatusServiceUnavailable)
 		return
 	}
 	flowJSON, _ := json.Marshal(flow)

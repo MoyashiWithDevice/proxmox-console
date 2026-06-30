@@ -141,10 +141,8 @@ function handleFormSubmit(e) {
   // FormData は form 要素から作る（hidden flow も含まれる）
   var formData = new FormData(form);
 
-  console.log('[auth] submitting to', form.action, 'method', form.method);
-
   fetch(form.action, {
-    method: form.method,
+    method: 'POST',
     body: formData,
   }).then(function(res) {
     console.log('[auth] response status', res.status, 'redirected', res.redirected);

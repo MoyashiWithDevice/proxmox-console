@@ -59,7 +59,14 @@ function renderAuthForm() {
     html += '<span>' + escapeHTML(text) + '</span></div>';
   });
 
-  html += '<form id="auth-form" action="' + escapeHTML(action) + '" method="' + escapeHTML(method) + '">';
+  // action は Kratos の URL ではなく proxy エンドポイントを直接指定
+  var proxyAction = IS_REG ? '/api/auth/registration' : '/api/auth/login';
+  html += '<form id="auth-form" action="' + proxyAction + '" method="' + escapeHTML(method) + '">';
+
+  // flow ID を hidden field として直接埋め込む（URL パース不要に）
+  if (FLOW && FLOW.id) {
+    html += '<input type="hidden" name="flow" value="' + escapeHTML(FLOW.id) + '">';
+  }
 
   nodes.forEach(function(node) {
     var attrs = node.attributes || {};
@@ -131,26 +138,10 @@ function handleFormSubmit(e) {
 
   msgBox.style.display = 'none';
 
-  // Determine proxy endpoint based on current page
-  var proxyEndpoint = IS_REG ? '/api/auth/registration' : '/api/auth/login';
-
-  // FormData は form 要素から作る
+  // FormData は form 要素から作る（hidden flow も含まれる）
   var formData = new FormData(form);
 
-  // Extract flow ID from the original Kratos action URL
-  var flowParam = '';
-  if (form.action) {
-    var qIdx = form.action.indexOf('?');
-    if (qIdx !== -1) {
-      var params = new URLSearchParams(form.action.substring(qIdx));
-      flowParam = params.get('flow') || '';
-    }
-  }
-  if (flowParam) {
-    formData.set('flow', flowParam);
-  }
-
-  fetch(proxyEndpoint, {
+  fetch(form.action, {
     method: form.method,
     body: formData,
   }).then(function(res) {

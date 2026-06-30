@@ -7,7 +7,3 @@
 terraform/vms/*
 cert/*
 proxmox-console.exe
-scripts/plink.exe
-scripts/deploy-remote.ps1
-scripts/deploy-config.yaml
-scripts/deploy-README.md

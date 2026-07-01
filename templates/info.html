@@ -1,38 +1,18 @@
 {{define "title"}}Proxmox Console - Server Info{{end}}
 {{define "styles"}}<link rel="stylesheet" href="/css/info.css">{{end}}
 {{define "content"}}
-<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column">
+<div style="display:flex;flex-direction:column;height:100vh">
   {{template "page-header" .}}
-  <div style="display:flex;flex-direction:column;flex:1;align-items:center;padding:0 20px">
-    <div style="margin-top:64px;width:100%;max-width:600px">
-      {{template "dash-header" .}}
-      <div style="background:#111;border:1px solid #1a1a1a;border-radius:16px;padding:32px">
-        <div style="margin-bottom:28px">
-          <div style="display:flex;align-items:center;gap:10px">
-            {{template "icon-server" .}}
-            <div style="font-size:18px;font-weight:600">Server Info</div>
-          </div>
-        </div>
-        <div id="server-info" style="margin-bottom:28px">
-          <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">OS</div>
-            <select id="info-os" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none"></select>
-          </div>
-          <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ホスト名</div>
-            <input id="info-hostname" type="text" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
-          </div>
-          <div>
-            <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">SSH Port</div>
-            <input id="info-sshport" type="text" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button id="info-save" style="background:#2563eb;color:#fff;border:none;padding:12px 24px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500">保存</button>
-          <div id="info-status" style="display:none;font-size:14px"></div>
-        </div>
-      </div>
+  <div style="flex:1;overflow-y:auto;padding:32px 40px;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#333;margin-bottom:24px">
+      <a href="/" style="color:#444;text-decoration:none">Dashboard</a>
+      <span>/</span>
+      <a href="/resource" style="color:#444;text-decoration:none">リソース選択</a>
+      <span>/</span>
+      <span style="color:#fff">サーバ情報入力</span>
     </div>
+    <div style="font-size:22px;font-weight:300;color:#fff;letter-spacing:-0.02em;margin-bottom:28px">サーバ情報入力</div>
+    <div id="info-content" style="display:flex;flex-direction:column"></div>
   </div>
 </div>
 {{end}}

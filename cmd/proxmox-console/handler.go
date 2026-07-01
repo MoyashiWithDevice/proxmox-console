@@ -146,7 +146,7 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
 		return
 	}
-	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
+	http.Redirect(w, r, "/vm?job_id="+jobID, http.StatusSeeOther)
 }
 
 // PATCH: /api/vm

@@ -81,16 +81,16 @@ func errorUIHandler(w http.ResponseWriter, r *http.Request) {
 		switch code {
 		case "404":
 			d.ErrTitle = "Not Found"
-			d.ErrDesc = "お探しのページは存在しません。"
+			d.ErrDesc = "The requested page was not found."
 		case "500":
 			d.ErrTitle = "Internal Server Error"
-			d.ErrDesc = "サーバー内部でエラーが発生しました。"
+			d.ErrDesc = "An internal server error occurred."
 		case "503":
 			d.ErrTitle = "Service Unavailable"
-			d.ErrDesc = "認証サービスが利用できません。"
+			d.ErrDesc = "The authentication service is currently unavailable."
 		default:
 			d.ErrTitle = "Unknown Error"
-			d.ErrDesc = "不明なエラーが発生しました。"
+			d.ErrDesc = "An unknown error occurred."
 		}
 		statusCode := 500
 		if c, err2 := strconv.Atoi(code); err2 == nil {

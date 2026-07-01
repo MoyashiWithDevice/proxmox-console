@@ -27,9 +27,32 @@ function renderErrorPage() {
   html += '<span style="font-size:12px;color:#dc2626;letter-spacing:0.08em;text-transform:uppercase;font-weight:600">Error</span></div>';
   html += '<h1 style="font-size:28px;font-weight:700;letter-spacing:-0.02em;margin-bottom:12px;margin-top:10px">' + escapeHTML(title) + '</h1>';
   html += '<p style="font-size:14px;color:rgba(255,255,255,0.4);line-height:1.7;margin-bottom:28px">' + escapeHTML(desc) + '</p>';
-  html += '<a href="/login" style="display:inline-block;padding:12px 22px;background:#fff;color:#000;border-radius:10px;text-decoration:none;font-size:14px;font-weight:600">Return to login</a>';
+  html += '<a href="/login" style="display:inline-block;padding:12px 22px;background:#fff;color:#000;border-radius:10px;text-decoration:none;font-size:14px;font-weight:600">Return to sign in</a>';
   html += '</div></div>';
   return html;
+}
+
+// Map autocomplete to descriptive placeholder
+function getPlaceholder(attrs) {
+  var autocomplete = attrs.autocomplete || "";
+  var name = attrs.name || "";
+  var inputType = attrs.type || "text";
+
+  if (inputType === "password") return "Enter your password";
+
+  switch (autocomplete) {
+    case "email": return "Enter your email";
+    case "username": return "Enter your username";
+    case "current-password": return "Enter your current password";
+    case "new-password": return "Enter your new password";
+  }
+
+  if (name.indexOf("email") !== -1) return "Enter your email";
+  if (name.indexOf("password") !== -1) return "Enter your password";
+  if (name.indexOf("username") !== -1 || name.indexOf("traits.username") !== -1) return "Enter your username";
+  if (name.indexOf("name") !== -1) return "Enter your name";
+
+  return "Please enter a value";
 }
 
 function renderAuthForm() {
@@ -38,7 +61,7 @@ function renderAuthForm() {
   var nodes = ui.nodes || [];
   var method = ui.method || 'POST';
   var messages = ui.messages || [];
-  var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
+  var subtitle = IS_REG ? 'Create your new account.' : 'Welcome back.';
   var submitLabel = IS_REG ? 'Create account' : 'Sign in';
   var hasPassword = false;
   var submitBtnHtml = '';
@@ -84,7 +107,7 @@ function renderAuthForm() {
       var value = attrs.value || '';
       var required = attrs.required;
       var autocomplete = attrs.autocomplete || '';
-      var placeholder = autocomplete;
+      var placeholder = getPlaceholder(attrs);
 
       if (inputType === 'hidden') {
         // csrf_token 等の hidden フィールド - name と value を必ず含める
@@ -129,7 +152,7 @@ function renderAuthForm() {
 
   var linkText = IS_REG ? 'Already have an account? ' : 'Don\'t have an account? ';
   var linkHref = IS_REG ? '/login' : '/registration';
-  var linkLabel = IS_REG ? 'Sign in' : 'Create one';
+  var linkLabel = IS_REG ? 'Sign in' : 'Create account';
   html += '<div style="text-align:center;margin-top:20px;font-size:13px;color:rgba(255,255,255,0.25)">';
   html += linkText + '<a href="' + linkHref + '" style="color:rgba(255,255,255,0.7);text-decoration:none;font-weight:500">' + linkLabel + '</a>';
   html += '</div>';

@@ -86,6 +86,9 @@ func main() {
 	http.HandleFunc("/logout", requireLogin(logoutHandler))
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)
+	// Kratos プロキシエンドポイント - フォームからの POST を Kratos に転送
+	http.HandleFunc("/api/auth/login", proxyAuthHandler("login"))
+	http.HandleFunc("/api/auth/registration", proxyAuthHandler("registration"))
 	http.HandleFunc("/error", errorUIHandler)
 
 	fmt.Printf("Server started at %s\n", AppConfig.App.URL)

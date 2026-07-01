@@ -1,4 +1,4 @@
-{{define "title"}}Proxmox Console - Resource Selection{{end}}
+{{define "title"}}Proxmox Console - Create VM{{end}}
 {{define "styles"}}<link rel="stylesheet" href="/css/resource.css">{{end}}
 {{define "content"}}
 <div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column">
@@ -10,7 +10,7 @@
         <div style="margin-bottom:28px">
           <div style="display:flex;align-items:center;gap:10px">
             {{template "icon-hardDrive" .}}
-            <div style="font-size:18px;font-weight:600">Resource Selection</div>
+            <div style="font-size:18px;font-weight:600">Create Virtual Machine</div>
           </div>
         </div>
         <div id="resource-area">
@@ -22,7 +22,7 @@
               </div>
               <span id="hdd-value" style="font-size:14px;color:#aaa"></span>
             </div>
-            <input id="hdd-slider" type="range" min="20" max="200" step="5" value="50" style="width:100%">
+            <input id="hdd-slider" type="range" style="width:100%">
           </div>
           <div style="margin-bottom:28px">
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
@@ -32,9 +32,9 @@
               </div>
               <span id="cpu-value" style="font-size:14px;color:#aaa"></span>
             </div>
-            <input id="cpu-slider" type="range" min="1" max="32" step="1" value="4" style="width:100%">
+            <input id="cpu-slider" type="range" style="width:100%">
           </div>
-          <div>
+          <div style="margin-bottom:28px">
             <div style="display:flex;justify-content:space-between;margin-bottom:8px">
               <div style="display:flex;align-items:center;gap:6px">
                 {{template "icon-memoryStick" .}}
@@ -42,7 +42,25 @@
               </div>
               <span id="memory-value" style="font-size:14px;color:#aaa"></span>
             </div>
-            <input id="memory-slider" type="range" min="1" max="64" step="1" value="8" style="width:100%">
+            <input id="memory-slider" type="range" style="width:100%">
+          </div>
+          <div style="border-top:1px solid #1a1a1a;padding-top:28px;margin-bottom:28px">
+            <div style="margin-bottom:16px">
+              <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">OS</div>
+              <select id="info-os" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none"></select>
+            </div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ホスト名</div>
+              <input id="info-hostname" type="text" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
+            </div>
+            <div>
+              <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ユーザ名</div>
+              <input id="info-username" type="text" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button id="resource-submit" style="background:#2563eb;color:#fff;border:none;padding:12px 24px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500">作成</button>
+            <div id="resource-status" style="display:none;font-size:14px"></div>
           </div>
         </div>
       </div>

@@ -38,17 +38,17 @@ function renderSidebar() {
     html += '<div onmouseenter="setHover(\'vm-' + v.VMID + '\')" onmouseleave="setHover(null)" onclick="window.location.href=\'/vm?vmid=' + v.VMID + '\'" style="display:flex;align-items:center;gap:8;padding:6px 16px;cursor:pointer;font-size:13;color:' + color + ';background:' + bg + ';border-left:' + borderL + ';user-select:none;transition:all 0.15s;margin-bottom:2;border-radius:0 6px 6px 0">' +
       '<span style="width:8px;height:8px;border-radius:50%;background:' + ss + ';flex-shrink:0;margin-top:2"></span>' +
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4"/></svg>' +
-      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML((v.Name || "")) + '</span></div>';
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || v.Name || "") + '</span></div>';
   });
   var hasJobs = _items.some(function(v) { return v.type === "job"; });
   if (hasJobs) {
     html += '<div style="padding:8px 18px 4px;font-size:10px;color:#2a2a2a;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-top:14">\u4f5c\u6210\u4e2d</div>';
     _items.filter(function(v) { return v.type === "job"; }).forEach(function(v) {
-      var isActiveJob = String(v.id) === String(id);
-      var isHoverJob = _hovered === "job-" + v.id;
+      var isActiveJob = String(v.jobid) === String(id);
+      var isHoverJob = _hovered === "job-" + v.jobid;
       var js = STATUS_COLORS[v.status] || STATUS_COLORS.unknown;
       var jcolor = isActiveJob ? "#fff" : isHoverJob ? "#aaa" : "#888";
-      html += '<div onmouseenter="setHover(\'job-' + v.id + '\')" onmouseleave="setHover(null)" onclick="window.location.href=\'/vm?job_id=' + v.id + '\'" style="display:flex;align-items:center;gap:8;padding:6px 16px;cursor:pointer;font-size:13;color:' + jcolor + ';background:' + (isActiveJob?"#111":"transparent") + ';border-left:' + (isActiveJob?"2px solid #fff":"2px solid transparent") + ';user-select:none;transition:all 0.15s;margin-bottom:2;border-radius:0 6px 6px 0">' +
+      html += '<div onmouseenter="setHover(\'job-' + v.jobid + '\')" onmouseleave="setHover(null)" onclick="window.location.href=\'/vm?job_id=' + v.jobid + '\'" style="display:flex;align-items:center;gap:8;padding:6px 16px;cursor:pointer;font-size:13;color:' + jcolor + ';background:' + (isActiveJob?"#111":"transparent") + ';border-left:' + (isActiveJob?"2px solid #fff":"2px solid transparent") + ';user-select:none;transition:all 0.15s;margin-bottom:2;border-radius:0 6px 6px 0">' +
         '<span style="width:8px;height:8px;border-radius:50%;background:' + js + ';flex-shrink:0;margin-top:2"></span>' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + js + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4"/></svg>' +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || "") + ' (\u4f5c\u6210\u4e2d)</span></div>';
@@ -291,7 +291,7 @@ function init() {
 
     if (id) {
       var matchedVmById = _items.find(function(item) {
-        return item.vmid === id; // もしAPI側のキーが VMID なら item.VMID に適宜変更してください
+        return String(item.VMID) === String(id);
       });
       if (matchedVmById) {
         _vm = matchedVmById;
@@ -312,22 +312,21 @@ function init() {
 
     // _items の中から、現在の jobId に一致するデータを検索
     // (もし items の中に job_id がない場合は、すでに特定できている _jvmid や id で find してください)
-    var matchedVm = _items.find(function(item) {
-      return item.job_id === jobId; 
+    var matchedJob = _items.find(function(item) {
+      return item.jobid === jobId;
     });
 
-    if (matchedVmByJob) {
-      _s = matchedVmByJob.status || "\u2014";
-      _log = matchedVmByJob.log || "";
-      
-      if (matchedVmByJob.vmid) {
-        _jvmid = matchedVmByJob.vmid;
-        // id が指定されていない画面（新規作成直後など）であれば、このJobのVM情報を _vm にセット
-        if (!id) {
-          _vm = matchedVmByJob; 
-          resetFields();
+    if (matchedJob) {
+      _s = matchedJob.status || "\u2014";
+    } else if (jobId) {
+      api('/api/jobs').then(function(jobs) {
+        var j = (jobs || []).find(function(j) { return j.jobid === jobId; });
+        if (j) {
+          _s = j.status || "\u2014";
+          if (j.VMID) _jvmid = j.VMID;
+          renderMain();
         }
-      }
+      }).catch(function() {});
     } else {
       if (!id) { _vm = null; }
     }

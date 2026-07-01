@@ -119,10 +119,6 @@ func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 // PUT: /api/vm
 func createVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	kratosUserID, err := getKratosUserIDFromRequest(r)

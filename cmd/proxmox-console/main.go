@@ -52,7 +52,7 @@ func main() {
 		}
 
 		// 新しいテンプレートルート
-		if r.URL.Path == "/vm" || r.URL.Path == "/info" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
+		if r.URL.Path == "/vm" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
 			renderPage(w, r.URL.Path[1:]+".html", nil)
 			return
 		}

@@ -36,13 +36,16 @@ function renderAuthForm() {
   var flow = FLOW;
   var ui = flow.ui || {};
   var nodes = ui.nodes || [];
-  var action = ui.action || '';
   var method = ui.method || 'POST';
   var messages = ui.messages || [];
   var subtitle = IS_REG ? 'Join the platform.' : 'Welcome back.';
   var submitLabel = IS_REG ? 'Create account' : 'Sign in';
   var hasPassword = false;
   var submitBtnHtml = '';
+
+  // action は Kratos の URL ではなく Go プロキシエンドポイントに差し替え
+  // これにより form のネイティブ submit で Go プロキシに POST される
+  var proxyAction = IS_REG ? '/api/auth/registration' : '/api/auth/login';
 
   var html = '<div class="gloss-card-outer" style="border-radius:20px;overflow:hidden">';
   html += '<div class="gloss-card-inner" style="border-radius:20px">';
@@ -59,7 +62,14 @@ function renderAuthForm() {
     html += '<span>' + escapeHTML(text) + '</span></div>';
   });
 
-  html += '<form id="auth-form" action="' + escapeHTML(action) + '" method="' + escapeHTML(method) + '">';
+  // form action は Go プロキシエンドポイント
+  html += '<form id="auth-form" action="' + escapeHTML(proxyAction) + '" method="' + escapeHTML(method) + '">';
+
+  // flow ID を hidden field として埋め込む
+  // Kratos の flow ID がなければ form 送信時にプロキシが処理できない
+  if (flow && flow.id) {
+    html += '<input type="hidden" name="flow" value="' + escapeHTML(flow.id) + '">';
+  }
 
   nodes.forEach(function(node) {
     var attrs = node.attributes || {};
@@ -77,9 +87,18 @@ function renderAuthForm() {
       var placeholder = autocomplete;
 
       if (inputType === 'hidden') {
-        html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
+        // csrf_token 等の hidden フィールド - name と value を必ず含める
+        if (name) {
+          html += '<input type="hidden" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '">';
+        }
       } else if (inputType === 'submit') {
-        submitBtnHtml = '<button type="submit" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(labelText || submitLabel) + '</button>';
+        // submit ボタンは最後に配置
+        // name (例: "method") と value (例: "password") を form 送信に含めるため
+        if (name) {
+          submitBtnHtml = '<button type="submit" name="' + escapeHTML(name) + '" value="' + escapeHTML(value) + '" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(labelText || submitLabel) + '</button>';
+        } else {
+          submitBtnHtml = '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(labelText || submitLabel) + '</button>';
+        }
       } else {
         if (name === 'password') hasPassword = true;
         html += '<div style="margin-bottom:18px">';
@@ -95,7 +114,7 @@ function renderAuthForm() {
     }
   });
 
-  // Registration: inject password field if Kratos didn't provide one
+  // Registration: パスワードフィールドがなければ追加（1 画面に email + password を表示）
   if (IS_REG && !hasPassword) {
     html += '<div style="margin-bottom:18px">';
     html += '<label style="display:block;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500">Password</label>';
@@ -103,6 +122,7 @@ function renderAuthForm() {
     html += '</div>';
   }
 
+  // submit ボタン（name=method, value=password 等を含む）
   html += submitBtnHtml || '<button type="submit" class="btn-primary" style="width:100%;padding:14px 20px;background:#fff;color:#000;border:none;border-radius:12px;font-size:16px;font-weight:600;margin-top:6px">' + escapeHTML(submitLabel) + '</button>';
 
   html += '</form>';

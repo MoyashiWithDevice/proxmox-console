@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -119,7 +120,7 @@ func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 // PUT: /api/vm
 func createVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPut {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -796,11 +797,37 @@ func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
 	return ssh.Dial("tcp", ip+":22", config)
 }
 
-// GET: /api/settings
+var userSettings sync.Map
+
+type UserSettings struct {
+	Os       string `json:"Os"`
+	Hostname string `json:"Hostname"`
+	SSHPort  string `json:"SSHPort"`
+	Runcmd   string `json:"Runcmd"`
+}
+
+// GET/POST: /api/settings
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var us UserSettings
+		if err := json.NewDecoder(r.Body).Decode(&us); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		userSettings.Store(userID, us)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
 
 	type OSOptionPublic struct {
 		ID    string `json:"id"`
@@ -813,12 +840,22 @@ func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	resp := map[string]any{
 		"cpu":    SettingsConf.Resources.CPU,
 		"memory": SettingsConf.Resources.Memory,
 		"hdd":    SettingsConf.Resources.HDD,
 		"os":     osList,
-	})
+	}
+
+	if val, ok := userSettings.Load(userID); ok {
+		us := val.(UserSettings)
+		resp["Os"] = us.Os
+		resp["Hostname"] = us.Hostname
+		resp["SSHPort"] = us.SSHPort
+		resp["Runcmd"] = us.Runcmd
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 type flushWriter struct {

@@ -8,6 +8,7 @@ type VMRequest struct {
 	Servername string `json:"servername,omitempty"`
 	Username   string `json:"username,omitempty"`
 	OS         string `json:"os,omitempty"`
+	Runcmd     string `json:"runcmd,omitempty"`
 }
 
 type VMResponse struct {

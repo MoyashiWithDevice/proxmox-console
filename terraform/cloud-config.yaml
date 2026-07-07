@@ -20,3 +20,10 @@ users:
 
 chpasswd:
   expire: false
+
+%{ if runcmd != "" ~}
+runcmd:
+%{ for cmd in split("\n", runcmd) ~}
+  - ${cmd}
+%{ endfor ~}
+%{ endif ~}

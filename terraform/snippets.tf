@@ -11,6 +11,7 @@ resource "proxmox_virtual_environment_file" "cloudcfg" {
       user_pubkey   = var.user_pubkey
       agent_user    = var.agent_user
       agent_pubkey  = var.agent_pubkey
+      runcmd        = var.runcmd
     })
   }
 }

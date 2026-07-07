@@ -85,5 +85,141 @@ function vmAction(vmid, action) {
     .catch(function() {});
 }
 
+// ── Create VM Modal ──────────────────────────────────────────────
+var createLimits = { cpu: { min: 1, max: 32, step: 1 }, memory: { min: 512, max: 8192, step: 512 }, hdd: { min: 1, max: 200, step: 1 } };
+
+function openCreateModal() {
+  var modal = $('create-modal');
+  modal.style.display = 'flex';
+  $('create-status').style.display = 'none';
+  $('create-submit').disabled = false;
+  $('create-submit').textContent = '作成';
+
+  // Load settings for OS list and resource limits
+  api('/api/settings').then(function(data) {
+    // populate OS dropdown
+    var osSel = $('create-os');
+    osSel.innerHTML = '';
+    if (data.os && Array.isArray(data.os)) {
+      data.os.forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.label;
+        osSel.appendChild(opt);
+      });
+    }
+    // set resource limits from server config
+    if (data.cpu) { createLimits.cpu = data.cpu; setSliderRange('create-cpu', data.cpu); }
+    if (data.memory) { createLimits.memory = data.memory; setSliderRange('create-memory', data.memory); }
+    if (data.hdd) { createLimits.hdd = data.hdd; setSliderRange('create-hdd', data.hdd); }
+    // restore saved preferences
+    if (data.Os) osSel.value = data.Os;
+    if (data.Runcmd) $('create-runcmd').value = data.Runcmd;
+  }).catch(function() {});
+
+  updateSliderDisplay('create-cpu', 'create-cpu-value', 'Cores');
+  updateSliderDisplay('create-memory', 'create-memory-value', 'GB', 1024);
+  updateSliderDisplay('create-hdd', 'create-hdd-value', 'GB');
+}
+
+function closeCreateModal() {
+  $('create-modal').style.display = 'none';
+}
+
+function setSliderRange(id, limits) {
+  var el = $(id);
+  if (limits.min != null) el.min = limits.min;
+  if (limits.max != null) el.max = limits.max;
+  if (limits.step != null) el.step = limits.step;
+  el.value = Math.max(el.min, Math.min(el.max, el.value));
+}
+
+function updateSliderDisplay(sliderId, valueId, unit, divisor) {
+  var slider = $(sliderId);
+  var display = $(valueId);
+  function upd() {
+    var v = parseInt(slider.value, 10);
+    if (divisor) { display.textContent = (v / divisor) + ' ' + unit; }
+    else { display.textContent = v + ' ' + unit; }
+  }
+  upd();
+  slider.addEventListener('input', upd);
+}
+
+function submitCreateVM() {
+  try {
+    var servername = $('create-servername').value.trim();
+    if (!servername) { showCreateStatus('error', 'サーバー名を入力してください。'); return; }
+
+    var btn = $('create-submit');
+    btn.disabled = true;
+    btn.textContent = '作成中…';
+    btn.style.background = '#334155';
+    showCreateStatus(null, '');
+
+    var payload = {
+      servername: servername,
+      os: $('create-os').value,
+      cpu: parseInt($('create-cpu').value, 10),
+      memory: parseInt($('create-memory').value, 10),
+      hdd: parseInt($('create-hdd').value, 10),
+      username: $('create-username').value.trim() || 'user',
+      runcmd: $('create-runcmd').value
+    };
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', '/api/vm', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.timeout = 60000;
+
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        closeCreateModal();
+        fetchVMs();
+      } else {
+        var msg = '作成に失敗しました (HTTP ' + xhr.status + ')';
+        try { var errResp = JSON.parse(xhr.responseText); if (errResp.error) msg = errResp.error; } catch(e) {}
+        showCreateStatus('error', msg);
+        btn.disabled = false;
+        btn.textContent = '作成';
+        btn.style.background = '#2563eb';
+      }
+    };
+
+    xhr.onerror = function() {
+      showCreateStatus('error', 'ネットワークエラーが発生しました。');
+      btn.disabled = false;
+      btn.textContent = '作成';
+      btn.style.background = '#2563eb';
+    };
+
+    xhr.ontimeout = function() {
+      showCreateStatus('error', 'リクエストがタイムアウトしました。');
+      btn.disabled = false;
+      btn.textContent = '作成';
+      btn.style.background = '#2563eb';
+    };
+
+    xhr.send(JSON.stringify(payload));
+  } catch(e) {
+    showCreateStatus('error', 'エラー: ' + e.message);
+    var btn = $('create-submit');
+    btn.disabled = false;
+    btn.textContent = '作成';
+    btn.style.background = '#2563eb';
+  }
+}
+
+function showCreateStatus(type, msg) {
+  var el = $('create-status');
+  if (!msg) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.style.background = type === 'error' ? 'rgba(244,63,79,0.1)' : 'rgba(34,197,94,0.1)';
+  el.style.color = type === 'error' ? '#f43f5e' : '#22c55e';
+  el.style.border = '1px solid ' + (type === 'error' ? 'rgba(244,63,79,0.2)' : 'rgba(34,197,94,0.2)');
+  el.textContent = msg;
+}
+
 fetchVMs();
 setInterval(fetchVMs, 7000);

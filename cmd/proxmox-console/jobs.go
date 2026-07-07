@@ -113,9 +113,12 @@ agent_user    = "%s"
 agent_pubkey  =<<EOT
 %s
 EOT
+runcmd        =<<EOT
+%s
+EOT
 `,
 		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
-		userPubkey, agentUser, agentPubkey,
+		userPubkey, agentUser, agentPubkey, req.Runcmd,
 	)
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)

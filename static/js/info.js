@@ -1,6 +1,7 @@
 var osEl = $('info-os');
 var hostnameEl = $('info-hostname');
 var sshportEl = $('info-sshport');
+var runcmdEl = $('info-runcmd');
 var saveBtn = $('info-save');
 var statusEl = $('info-status');
 
@@ -23,10 +24,11 @@ api('/api/settings').then(function(data) {
   });
   hostnameEl.value = data.Hostname || '';
   sshportEl.value = data.SSHPort || '';
+  runcmdEl.value = data.Runcmd || '';
 }).catch(function() { setStatus('error', '設定の読み込みに失敗しました。'); });
 
 saveBtn.addEventListener('click', function() {
-  var payload = { Os: osEl.value, Hostname: hostnameEl.value, SSHPort: sshportEl.value };
+  var payload = { Os: osEl.value, Hostname: hostnameEl.value, SSHPort: sshportEl.value, Runcmd: runcmdEl.value };
   saveBtn.disabled = true;
   saveBtn.textContent = '保存中\u2026';
   saveBtn.style.background = '#334155';

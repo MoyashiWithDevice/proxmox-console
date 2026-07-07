@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net"
@@ -36,44 +35,19 @@ func main() {
 	}
 	defer closeDB()
 
-	// 静的CSSファイルは認証なしで配信
-	http.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./static/css"))))
+	// SPA 静的アセット
+	http.Handle("/assets/", http.FileServer(http.Dir("./static/dist")))
 
-	// 静的JSファイルは認証なしで配信
-	http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./static/js"))))
-
-	fs := http.FileServer(http.Dir("./static"))
 	http.HandleFunc("/", requireLogin(func(w http.ResponseWriter, r *http.Request) {
-
-		// ルートは dashboard.html を表示
-		if r.URL.Path == "/" {
-			renderPage(w, "dashboard.html", nil)
+		// 静的ファイルが存在する場合はそれを配信
+		fp := filepath.Join("./static/dist", filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(fp); err == nil && !info.IsDir() {
+			http.FileServer(http.Dir("./static/dist")).ServeHTTP(w, r)
 			return
 		}
 
-		// 新しいテンプレートルート
-		if r.URL.Path == "/vm" || r.URL.Path == "/info" || r.URL.Path == "/resource" || r.URL.Path == "/support" {
-			renderPage(w, r.URL.Path[1:]+".html", nil)
-			return
-		}
-
-		// Terminal テンプレート（vmid パラメータ付き）
-		if r.URL.Path == "/terminal" {
-			renderPage(w, "terminal.html", map[string]string{
-				"VMID": r.URL.Query().Get("vmid"),
-			})
-			return
-		}
-
-		// 静的ファイルが存在しない場合は404エラーページへ
-		fp := filepath.Join("./static", filepath.Clean(r.URL.Path))
-		if info, err := os.Stat(fp); err != nil || info.IsDir() {
-			http.Redirect(w, r, "/error?code=404", http.StatusFound)
-			return
-		}
-
-		// それ以外は静的ファイルとして配信（一覧は出ない）
-		fs.ServeHTTP(w, r)
+		// SPA fallback: それ以外は index.html を返す
+		http.ServeFile(w, r, "static/dist/index.html")
 	}))
 	http.HandleFunc("/api/vms", requireLogin(userVMListHandler))
 	http.HandleFunc("/api/vm", requireLogin(vmDetailHandler))
@@ -83,6 +57,7 @@ func main() {
 	http.HandleFunc("/api/jobs", requireLogin(listJobsHandler))
 	http.HandleFunc("/api/settings", requireLogin(settingsAPIHandler))
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
+	http.HandleFunc("/api/auth/flow", authFlowAPIHandler)
 	http.HandleFunc("/logout", requireLogin(logoutHandler))
 	http.HandleFunc("/login", loginUIHandler)
 	http.HandleFunc("/registration", registrationUIHandler)
@@ -181,19 +156,6 @@ func runCmdWithLog(cmd *exec.Cmd, logFile *os.File) ([]byte, error) {
 	}
 
 	return buf.Bytes(), err
-}
-
-func renderPage(w http.ResponseWriter, page string, data interface{}) {
-	tmpl, err := template.ParseFiles(
-		"templates/_base.html",
-		"templates/_icon.html",
-		"templates/"+page,
-	)
-	if err != nil {
-		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	tmpl.ExecuteTemplate(w, page, data)
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

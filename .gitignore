@@ -7,3 +7,5 @@
 terraform/vms/*
 cert/*
 proxmox-console.exe
+static/dist/
+frontend/node_modules/

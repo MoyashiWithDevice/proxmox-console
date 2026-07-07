@@ -3,18 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 )
-
-type authPageData struct {
-	Title          string
-	FlowJSON       template.JS
-	IsRegistration bool
-}
-
-var authTmpl = template.Must(template.ParseFiles("templates/auth.html"))
 
 func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+apiPath, nil)
@@ -39,20 +32,72 @@ func fetchKratosFlow(apiPath string, r *http.Request) (map[string]interface{}, e
 	return flow, nil
 }
 
+func authFlowAPIHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	flowType := r.URL.Query().Get("type")
+	flowID := r.URL.Query().Get("flow")
+
+	if flowType == "" || flowID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "missing type or flow parameter"})
+		return
+	}
+
+	var apiPath string
+	switch flowType {
+	case "login":
+		apiPath = "/self-service/login/flows?id=" + flowID
+	case "registration":
+		apiPath = "/self-service/registration/flows?id=" + flowID
+	case "error":
+		apiPath = "/self-service/errors?id=" + flowID
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid flow type"})
+		return
+	}
+
+	flow, err := fetchKratosFlow(apiPath, r)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(flow)
+}
+
+func serveSPA(w http.ResponseWriter) {
+	html, err := os.ReadFile("static/dist/index.html")
+	if err != nil {
+		http.Error(w, "Frontend not built", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(html)
+}
+
+func serveSPAWithFlow(w http.ResponseWriter, flow map[string]interface{}) {
+	html, err := os.ReadFile("static/dist/index.html")
+	if err != nil {
+		http.Error(w, "Frontend not built", http.StatusInternalServerError)
+		return
+	}
+	b, _ := json.Marshal(flow)
+	script := []byte(`<script>window.FLOW = ` + string(b) + `;</script>`)
+	modified := strings.Replace(string(html), "<head>", "<head>"+string(script), 1)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(modified))
+}
+
 func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
 		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/login/browser", http.StatusFound)
 		return
 	}
-	flow, err := fetchKratosFlow("/self-service/login/flows?id="+flowID, r)
-	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/login/browser", http.StatusFound)
-		return
-	}
-	flowJSON, _ := json.Marshal(flow)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	authTmpl.ExecuteTemplate(w, "auth.html", authPageData{Title: "Sign in", FlowJSON: template.JS(flowJSON), IsRegistration: false})
+	serveSPA(w)
 }
 
 func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
@@ -61,57 +106,28 @@ func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/registration/browser", http.StatusFound)
 		return
 	}
-	flow, err := fetchKratosFlow("/self-service/registration/flows?id="+flowID, r)
-	if err != nil {
-		http.Redirect(w, r, AppConfig.Kratos.BROWSERURL+"/self-service/registration/browser", http.StatusFound)
-		return
-	}
-	flowJSON, _ := json.Marshal(flow)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	authTmpl.ExecuteTemplate(w, "auth.html", authPageData{Title: "Create account", FlowJSON: template.JS(flowJSON), IsRegistration: true})
+	serveSPA(w)
 }
 
 func errorUIHandler(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code != "" {
-		var d struct {
-			ErrCode, ErrTitle, ErrDesc string
-		}
-		d.ErrCode = code
-		switch code {
-		case "404":
-			d.ErrTitle = "Not Found"
-			d.ErrDesc = "The requested page was not found."
-		case "500":
-			d.ErrTitle = "Internal Server Error"
-			d.ErrDesc = "An internal server error occurred."
-		case "503":
-			d.ErrTitle = "Service Unavailable"
-			d.ErrDesc = "The authentication service is currently unavailable."
-		default:
-			d.ErrTitle = "Unknown Error"
-			d.ErrDesc = "An unknown error occurred."
-		}
 		statusCode := 500
 		if c, err2 := strconv.Atoi(code); err2 == nil {
 			statusCode = c
 		}
 		w.WriteHeader(statusCode)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		renderPage(w, "error.html", d)
+		serveSPA(w)
 		return
 	}
 
 	errorID := r.URL.Query().Get("id")
-	var flowJSON template.JS = template.JS("{}")
 	if errorID != "" {
 		flow, err := fetchKratosFlow("/self-service/errors?id="+errorID, r)
 		if err == nil {
-			b, _ := json.Marshal(flow)
-			flowJSON = template.JS(b)
+			serveSPAWithFlow(w, flow)
+			return
 		}
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	authTmpl.ExecuteTemplate(w, "auth.html", authPageData{Title: "Error", FlowJSON: flowJSON})
+	serveSPA(w)
 }
-

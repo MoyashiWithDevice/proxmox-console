@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -101,13 +100,7 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 
 		var flowData map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &flowData); err == nil {
-			flowJSON, _ := json.Marshal(flowData)
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			authTmpl.ExecuteTemplate(w, "auth.html", authPageData{
-				Title:          "Sign in",
-				FlowJSON:       template.JS(flowJSON),
-				IsRegistration: false,
-			})
+			serveSPAWithFlow(w, flowData)
 			return
 		}
 
@@ -191,13 +184,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 
 	if hasFlowErrors(flow2) {
 		log.Printf("[combined-reg] step2 flow has errors")
-		flowJSON, _ := json.Marshal(flow2)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		authTmpl.ExecuteTemplate(w, "auth.html", authPageData{
-			Title:          "Create account",
-			FlowJSON:       template.JS(flowJSON),
-			IsRegistration: true,
-		})
+		serveSPAWithFlow(w, flow2)
 		return
 	}
 
@@ -408,23 +395,12 @@ func performKratosLogin(email, password string) (*http.Cookie, error) {
 }
 
 // tryRenderAuthForm は Kratos から返されたエラーレスポンス (flow JSON または raw body)
-// をパースして auth.html テンプレートを描画する。
+// をパースしてフロントエンド SPA を描画する。
 func tryRenderAuthForm(w http.ResponseWriter, bodyBytes []byte, isRegistration bool) {
 	var flowData map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &flowData); err == nil {
-		flowJSON, _ := json.Marshal(flowData)
-		title := "Sign in"
-		if isRegistration {
-			title = "Create account"
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		authTmpl.ExecuteTemplate(w, "auth.html", authPageData{
-			Title:          title,
-			FlowJSON:       template.JS(flowJSON),
-			IsRegistration: isRegistration,
-		})
+		serveSPAWithFlow(w, flowData)
 	} else {
-		// JSON パースできない場合はエラーテキストを返す
 		http.Error(w, "authentication failed", http.StatusInternalServerError)
 	}
 }

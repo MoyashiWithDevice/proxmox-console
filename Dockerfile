@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 
 # Copy frontend build output
-COPY --from=frontend /app/../static/dist ./static/dist
+COPY --from=frontend /static/dist ./static/dist
 
 # Build cache
 RUN --mount=type=cache,target=/go/pkg/mod \

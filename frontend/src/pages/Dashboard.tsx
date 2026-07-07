@@ -1,16 +1,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchVMs } from '../lib/api';
+import { fetchVMs, fetchSettings } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { StatusBadge } from '../components/StatusBadge';
-import type { VMResponse } from '../types';
+import type { VMResponse, SettingsResponse } from '../types';
 
 export function Dashboard() {
   const [items, setItems] = useState<VMResponse[]>([]);
+  const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const navigate = useNavigate();
 
   const loadVMs = useCallback(() => {
     fetchVMs().then(setItems).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchSettings().then(setSettings).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -20,10 +25,14 @@ export function Dashboard() {
   }, [loadVMs]);
 
   const vmItems = items.filter((i) => i.type === 'vm');
-
+  const totalVMs = vmItems.length;
   const totalCores = vmItems.reduce((sum, vm) => sum + (vm.Cores || vm.CPU || 0), 0);
   const totalMem = vmItems.reduce((sum, vm) => sum + (vm.Memory || 0), 0);
   const totalDisk = vmItems.reduce((sum, vm) => sum + (vm.HDD || vm.Hdd || 0), 0);
+
+  const maxCores = settings?.cpu?.max || 1;
+  const maxMem = settings?.memory?.max || 1;
+  const maxDisk = settings?.hdd?.max || 1;
 
   async function vmAction(vmid: number | undefined, action: string) {
     if (!vmid) return;
@@ -60,11 +69,36 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 32 }}>
-          <StatCard icon="server" label="VMs" value={vmItems.length} />
-          <StatCard icon="cpu" label="Cores" value={totalCores} />
-          <StatCard icon="memoryStick" label="Memory" value={`${totalMem} GB`} />
-          <StatCard icon="hardDrive" label="Disk" value={`${totalDisk} GB`} />
+        <div style={{ display: 'flex', gap: 16, marginBottom: 32 }}>
+          <StatCard
+            icon="server"
+            label="VMs"
+            used={totalVMs}
+            total={totalVMs > 0 ? totalVMs : 1}
+            unit=""
+            showPct={false}
+          />
+          <StatCard
+            icon="cpu"
+            label="CPU"
+            used={totalCores}
+            total={maxCores}
+            unit="Cores"
+          />
+          <StatCard
+            icon="memoryStick"
+            label="Memory"
+            used={totalMem}
+            total={maxMem}
+            unit="GB"
+          />
+          <StatCard
+            icon="hardDrive"
+            label="Disk"
+            used={totalDisk}
+            total={maxDisk}
+            unit="GB"
+          />
         </div>
 
         <div>
@@ -169,16 +203,45 @@ export function Dashboard() {
   );
 }
 
-function StatCard({ icon, label, value }: { icon: 'server' | 'cpu' | 'memoryStick' | 'hardDrive'; label: string; value: string | number }) {
+function StatCard({
+  icon, label, used, total, unit, showPct = true,
+}: {
+  icon: 'server' | 'cpu' | 'memoryStick' | 'hardDrive';
+  label: string;
+  used: number;
+  total: number;
+  unit: string;
+  showPct?: boolean;
+}) {
+  const pct = total === 0 ? 0 : Math.round((used / total) * 100);
+  const barColor = pct > 85 ? '#f43f5e' : pct > 65 ? '#f59e0b' : '#fff';
+
   return (
-    <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 12, padding: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: 'rgba(99,102,241,0.1)', borderRadius: 8 }}>
-          <Icon name={icon} />
-        </div>
-        <span style={{ fontSize: 13, color: '#888' }}>{label}</span>
+    <div style={{ flex: 1, minWidth: 140, padding: '20px 24px', border: '1px solid #111' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <Icon name={icon} width={14} height={14} color="#444" />
+        <span style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {label}
+        </span>
       </div>
-      <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em' }}>{value}</div>
+      {showPct ? (
+        <>
+          <div style={{ fontSize: 28, fontWeight: 300, color: '#fff', marginBottom: 12, lineHeight: 1 }}>
+            {pct}<span style={{ fontSize: 14, color: '#444' }}>%</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 3, background: '#1e1e1e', borderRadius: 2 }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 2 }} />
+            </div>
+            <span style={{ fontSize: 11, color: '#555', minWidth: 28, textAlign: 'right' }}>{pct}%</span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: '#333' }}>
+            {used} / {total} {unit}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 28, fontWeight: 300, color: '#fff', lineHeight: 1 }}>{used}</div>
+      )}
     </div>
   );
 }

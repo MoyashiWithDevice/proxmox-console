@@ -913,12 +913,13 @@ func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	type OSOptionPublic struct {
 		ID    string `json:"id"`
 		Label string `json:"label"`
+		Image string `json:"image,omitempty"`
 	}
 
 	// 内部で使用するOSテンプレートID以外を返す
 	osList := make([]OSOptionPublic, len(SettingsConf.OS))
 	for i, o := range SettingsConf.OS {
-		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
+		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label, Image: o.Image}
 	}
 
 	resp := map[string]any{

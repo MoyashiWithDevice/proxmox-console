@@ -227,22 +227,66 @@ function openCreateModal() {
 
   // Load settings for OS list and resource limits
   api('/api/settings').then(function(data) {
-    var osSel = $('create-os');
-    osSel.innerHTML = '';
+    var grid = $('create-os-grid');
+    grid.innerHTML = '';
+    var colors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'];
     if (data.os && Array.isArray(data.os)) {
-      data.os.forEach(function(o) {
-        var opt = document.createElement('option');
-        opt.value = o.id;
-        opt.textContent = o.label;
-        osSel.appendChild(opt);
+      data.os.forEach(function(o, idx) {
+        var card = document.createElement('div');
+        card.className = 'os-card';
+        card.dataset.value = o.id;
+
+        var imgContainer = document.createElement('div');
+        imgContainer.className = 'os-card-img';
+
+        if (o.image) {
+          var img = document.createElement('img');
+          img.src = o.image;
+          img.alt = o.label;
+          imgContainer.appendChild(img);
+        } else {
+          var placeholder = document.createElement('span');
+          placeholder.className = 'os-card-placeholder';
+          placeholder.textContent = o.label.charAt(0).toUpperCase();
+          placeholder.style.background = colors[idx % colors.length];
+          imgContainer.appendChild(placeholder);
+        }
+
+        var label = document.createElement('div');
+        label.className = 'os-card-label';
+        label.textContent = o.label;
+
+        card.appendChild(imgContainer);
+        card.appendChild(label);
+
+        card.addEventListener('click', function() {
+          grid.querySelectorAll('.os-card').forEach(function(c) { c.classList.remove('selected'); });
+          this.classList.add('selected');
+          $('create-os').value = this.dataset.value;
+        });
+
+        grid.appendChild(card);
       });
+      var first = grid.querySelector('.os-card');
+      if (first) {
+        first.classList.add('selected');
+        $('create-os').value = first.dataset.value;
+      }
     }
     // set resource limits from server config
     if (data.cpu) { createLimits.cpu = data.cpu; setSliderRange('create-cpu', data.cpu); }
     if (data.memory) { createLimits.memory = data.memory; setSliderRange('create-memory', data.memory); }
     if (data.hdd) { createLimits.hdd = data.hdd; setSliderRange('create-hdd', data.hdd); }
     // restore saved preferences
-    if (data.Os) osSel.value = data.Os;
+    if (data.Os) {
+      var saved = data.Os;
+      var savedCard = grid.querySelector('.os-card[data-value="' + saved + '"]');
+      if (savedCard) {
+        grid.querySelectorAll('.os-card').forEach(function(c) { c.classList.remove('selected'); });
+        savedCard.classList.add('selected');
+        $('create-os').value = saved;
+      }
+    }
     if (data.Runcmd) $('create-runcmd').value = data.Runcmd;
   }).catch(function() {});
 

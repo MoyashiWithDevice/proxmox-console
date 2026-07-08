@@ -24,7 +24,8 @@ type OSOption struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	// Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
-	TemplateID int `json:"-"`
+	TemplateID int    `json:"-"`
+	Image      string `json:"image,omitempty"`
 }
 type ResourceConstraints struct {
 	CPU    ResourceLimit `json:"cpu"`

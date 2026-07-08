@@ -19,7 +19,8 @@
     {
       "id": "ubuntu 24.04",
       "label": "Ubuntu 24.04 LTS",
-      "template_id": 9000
+      "template_id": 9000,
+      "image": "/images/ubuntu.jpg"
     }
   ],
   "agent": {

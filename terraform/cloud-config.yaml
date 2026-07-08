@@ -20,3 +20,20 @@ users:
 
 chpasswd:
   expire: false
+
+%{ if vm_ip != "" ~}
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - ${vm_ip}/${vm_netmask}
+      gateway4: ${vm_gateway}
+%{ endif ~}
+
+%{ if runcmd != "" ~}
+runcmd:
+%{ for cmd in split("\n", runcmd) ~}
+  - ${cmd}
+%{ endfor ~}
+%{ endif ~}

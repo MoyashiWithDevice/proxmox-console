@@ -13,11 +13,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 )
+
+const maxISOSize = 10 << 30 // 10GB max ISO upload size
 
 var wsUpgrader = websocket.Upgrader{
 	HandshakeTimeout: 10 * time.Second,
@@ -87,7 +90,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobs.Range(func(key, value interface{}) bool {
 		job := value.(*Job)
-		if job.OwnerID != userID || job.Status == "done" {
+		if job.OwnerID != userID || job.Status == "done" || job.Status == "retried" {
 			return true
 		}
 		result = append(result, VMResponse{
@@ -133,7 +136,8 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
+	reqCopy := req
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID, Request: &reqCopy})
 
 	go runTerraformJob(jobID, &req, r)
 
@@ -143,6 +147,84 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
+}
+
+// POST: /api/vm/retry
+func retryVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.JobID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing job_id")
+		return
+	}
+
+	jobAny, ok := jobs.Load(req.JobID)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "job not found")
+		return
+	}
+
+	job := jobAny.(*Job)
+	if job.OwnerID != userID {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	if job.Status != "error" {
+		writeJSONError(w, http.StatusBadRequest, "job is not in error state")
+		return
+	}
+
+	if job.Request == nil {
+		writeJSONError(w, http.StatusBadRequest, "original request not found")
+		return
+	}
+
+	// Clean up old workdir
+	if job.Workdir != "" {
+		if err := os.RemoveAll(job.Workdir); err != nil {
+			fmt.Println("Warning: failed to clean up old workdir:", err)
+		}
+	}
+
+	// Mark old job as retried
+	job.Status = "retried"
+	jobs.Store(req.JobID, job)
+
+	// Create new job with the same request
+	newJobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	newReq := *job.Request
+
+	newJob := &Job{
+		Status:     "running",
+		Servername: newReq.Servername,
+		OwnerID:    userID,
+		Request:    &newReq,
+	}
+	jobs.Store(newJobID, newJob)
+
+	go runTerraformJob(newJobID, &newReq, r)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"job_id": newJobID})
 }
 
 // PATCH: /api/vm
@@ -736,7 +818,7 @@ func updateVMResources(userID string, req VMRequest) error {
 		return err
 	}
 
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+	if err := ensureTerraformTemplateLinks(workdir, ""); err != nil {
 		return err
 	}
 
@@ -792,29 +874,244 @@ func createSSHClient(ip, user, keyPath string) (*ssh.Client, error) {
 	return ssh.Dial("tcp", ip+":22", config)
 }
 
-// GET: /api/settings
+var userSettings sync.Map
+
+type UserSettings struct {
+	Os       string `json:"Os"`
+	Hostname string `json:"Hostname"`
+	SSHPort  string `json:"SSHPort"`
+	Runcmd   string `json:"Runcmd"`
+}
+
+// GET/POST: /api/settings
 func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var us UserSettings
+		if err := json.NewDecoder(r.Body).Decode(&us); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		userSettings.Store(userID, us)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
 	type OSOptionPublic struct {
 		ID    string `json:"id"`
 		Label string `json:"label"`
+		Image string `json:"image,omitempty"`
 	}
 
 	// 内部で使用するOSテンプレートID以外を返す
 	osList := make([]OSOptionPublic, len(SettingsConf.OS))
 	for i, o := range SettingsConf.OS {
-		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label}
+		osList[i] = OSOptionPublic{ID: o.ID, Label: o.Label, Image: o.Image}
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	resp := map[string]any{
 		"cpu":    SettingsConf.Resources.CPU,
 		"memory": SettingsConf.Resources.Memory,
 		"hdd":    SettingsConf.Resources.HDD,
 		"os":     osList,
+	}
+
+	if val, ok := userSettings.Load(userID); ok {
+		us := val.(UserSettings)
+		resp["Os"] = us.Os
+		resp["Hostname"] = us.Hostname
+		resp["SSHPort"] = us.SSHPort
+		resp["Runcmd"] = us.Runcmd
+	}
+
+	json.NewEncoder(w).Encode(resp)
+}
+
+// POST /api/iso/upload
+func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxISOSize)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "file too large or invalid form")
+		return
+	}
+
+	file, header, err := r.FormFile("iso")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "missing iso file")
+		return
+	}
+	defer file.Close()
+
+	filename := header.Filename
+	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		writeJSONError(w, http.StatusBadRequest, "file must be an ISO image")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	volumeID, err := uploadISOToProxmox(ctx, filename, file, header.Size)
+	if err != nil {
+		log.Printf("ISO upload failed: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "ISO upload failed: "+err.Error())
+		return
+	}
+
+	iso, err := createISO(dbUserID, filename, volumeID, header.Size)
+	if err != nil {
+		log.Printf("failed to save ISO record: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ISOInfo{
+		ID:        iso.ID,
+		Filename:  iso.Filename,
+		VolumeID:  iso.VolumeID,
+		Size:      iso.Size,
+		CreatedAt: iso.CreatedAt.Format(time.RFC3339),
 	})
+}
+
+// POST /api/iso/download
+func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var req struct {
+		URL      string `json:"url"`
+		Filename string `json:"filename,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.URL == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing url")
+		return
+	}
+
+	filename := req.Filename
+	if filename == "" {
+		parts := strings.Split(strings.TrimRight(req.URL, "/"), "/")
+		filename = parts[len(parts)-1]
+		if filename == "" || !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+			filename = "downloaded.iso"
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	volumeID, err := downloadISOFromURL(ctx, req.URL, filename)
+	if err != nil {
+		log.Printf("ISO download failed: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "ISO download failed: "+err.Error())
+		return
+	}
+
+	iso, err := createISO(dbUserID, filename, volumeID, 0)
+	if err != nil {
+		log.Printf("failed to save ISO record: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ISOInfo{
+		ID:        iso.ID,
+		Filename:  iso.Filename,
+		VolumeID:  iso.VolumeID,
+		Size:      iso.Size,
+		CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+	})
+}
+
+// GET /api/isos
+func listISOsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	isos, err := getUserISOs(dbUserID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to list ISOs")
+		return
+	}
+
+	var result []ISOInfo
+	for _, iso := range isos {
+		result = append(result, ISOInfo{
+			ID:        iso.ID,
+			Filename:  iso.Filename,
+			VolumeID:  iso.VolumeID,
+			Size:      iso.Size,
+			CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	if result == nil {
+		result = []ISOInfo{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 type flushWriter struct {

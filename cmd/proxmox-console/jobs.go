@@ -23,20 +23,6 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	// ---------------- バリデーション----------------
-	// --- OS バリデーション ---
-	var selectedOS *OSOption
-	for i := range SettingsConf.OS {
-		if SettingsConf.OS[i].ID == req.OS {
-			selectedOS = &SettingsConf.OS[i]
-			break
-		}
-	}
-	if selectedOS == nil {
-		failJob(jobID, "Requested value is invalid【OS】 :", err)
-		return
-	}
-
 	// --- リソース範囲バリデーション ---
 	res := SettingsConf.Resources
 	if req.CPU < res.CPU.Min || req.CPU > res.CPU.Max {
@@ -52,12 +38,23 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	// DB からユーザーIDを取得または作成
-	dbUserID, err := getDatabaseUserID(kratosUserID)
+	// DB からユーザー情報を取得または作成（VLAN ID 取得のため直接呼び出し）
+	user, err := getOrCreateUser(kratosUserID)
 	if err != nil {
-		failJob(jobID, "Error getting database user ID:", err)
+		failJob(jobID, "Error getting database user:", err)
 		return
 	}
+	dbUserID := user.ID
+	vlanID := 0
+	if user.VLANID.Valid {
+		vlanID = int(user.VLANID.Int64)
+	}
+	_, vmGateway, vmNetmask := vlanToSubnet(vlanID)
+	vmCount, errCount := getUserVMCount(dbUserID)
+	if errCount != nil {
+		vmCount = 0
+	}
+	vmIP := vlanToVMIP(vlanID, vmCount)
 
 	// VMリクエストのハッシュを計算
 	vmhash, err := hashRequest(req)
@@ -82,6 +79,23 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
 
+	var selectedOS *OSOption
+	useISO := req.ISOVolume != ""
+
+	if !useISO {
+		// --- OS バリデーション（clone モード） ---
+		for i := range SettingsConf.OS {
+			if SettingsConf.OS[i].ID == req.OS {
+				selectedOS = &SettingsConf.OS[i]
+				break
+			}
+		}
+		if selectedOS == nil {
+			failJob(jobID, "Requested value is invalid【OS】 :", err)
+			return
+		}
+	}
+
 	userPrivkey, userPubkey, err := generateSSHKeyPair()
 	if err != nil {
 		failJob(jobID, "Error creating key:", err)
@@ -99,7 +113,21 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	tfvars := fmt.Sprintf(`
+	var tfvars string
+	if useISO {
+		tfvars = fmt.Sprintf(`
+servername      = "%s"
+cpu             = %d
+memory          = %d
+hdd             = %d
+iso_volume_id   = "%s"
+vlan_id         = %d
+`,
+			req.Servername, req.CPU, req.Memory, req.HDD, req.ISOVolume,
+			vlanID,
+		)
+	} else {
+		tfvars = fmt.Sprintf(`
 servername    = "%s"
 cpu           = %d
 memory        = %d
@@ -113,14 +141,23 @@ agent_user    = "%s"
 agent_pubkey  =<<EOT
 %s
 EOT
+runcmd        =<<EOT
+%s
+EOT
+vlan_id       = %d
+vm_ip         = "%s"
+vm_gateway    = "%s"
+vm_netmask    = "%s"
 `,
-		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
-		userPubkey, agentUser, agentPubkey,
-	)
+			req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
+			userPubkey, agentUser, agentPubkey, req.Runcmd,
+			vlanID, vmIP, vmGateway, vmNetmask,
+		)
+	}
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
 	// ルートの共通テンプレートを各VMワークディレクトリにリンク
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+	if err := ensureTerraformTemplateLinks(workdir, req.ISOVolume); err != nil {
 		failJob(jobID, "Error linking Terraform templates:", err)
 		return
 	}
@@ -210,13 +247,23 @@ func applyTerraform(workdir string) error {
 	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
 }
 
-func ensureTerraformTemplateLinks(workdir string) error {
-	templateFiles := []string{
-		"provider.tf",
-		"variables.tf",
-		"snippets.tf",
-		"vm.tf",
-		"cloud-config.yaml",
+func ensureTerraformTemplateLinks(workdir string, isoVolumeID string) error {
+	var templateFiles []string
+
+	if isoVolumeID != "" {
+		templateFiles = []string{
+			"provider.tf",
+			"variables.tf",
+			"vm-iso.tf",
+		}
+	} else {
+		templateFiles = []string{
+			"provider.tf",
+			"variables.tf",
+			"snippets.tf",
+			"vm.tf",
+			"cloud-config.yaml",
+		}
 	}
 
 	for _, name := range templateFiles {

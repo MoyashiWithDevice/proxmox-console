@@ -24,7 +24,8 @@ type OSOption struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	// Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
-	TemplateID int `json:"-"`
+	TemplateID int    `json:"-"`
+	Image      string `json:"image,omitempty"`
 }
 type ResourceConstraints struct {
 	CPU    ResourceLimit `json:"cpu"`
@@ -37,10 +38,16 @@ type AgentConfig struct {
 	PublicKey string `json:"-"`
 }
 
+type VLANConfig struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
+}
+
 type SettingsConfig struct {
 	Resources ResourceConstraints `json:"resources"`
 	OS        []OSOption          `json:"os"`
 	Agent     AgentConfig         `json:"agent"`
+	VLAN      VLANConfig          `json:"vlan"`
 }
 
 type Config struct {
@@ -116,6 +123,10 @@ func loadSettingsConfig() {
 		},
 		Agent: AgentConfig{
 			User: "agent",
+		},
+		VLAN: VLANConfig{
+			Min: 100,
+			Max: 500,
 		},
 	}
 

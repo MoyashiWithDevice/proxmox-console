@@ -51,7 +51,7 @@ function renderSidebar() {
       html += '<div onmouseenter="setHover(\'job-' + v.jobid + '\')" onmouseleave="setHover(null)" onclick="window.location.href=\'/vm?job_id=' + v.jobid + '\'" style="display:flex;align-items:center;gap:8;padding:6px 16px;cursor:pointer;font-size:13;color:' + jcolor + ';background:' + (isActiveJob?"#111":"transparent") + ';border-left:' + (isActiveJob?"2px solid #fff":"2px solid transparent") + ';user-select:none;transition:all 0.15s;margin-bottom:2;border-radius:0 6px 6px 0">' +
         '<span style="width:8px;height:8px;border-radius:50%;background:' + js + ';flex-shrink:0;margin-top:2"></span>' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + js + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 5H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M8 21h8m-4-4v4"/></svg>' +
-        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || "") + ' (\u4f5c\u6210\u4e2d)</span></div>';
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHTML(v.servername || "") + ' (' + (v.status || '\u4f5c\u6210\u4e2d') + ')</span></div>';
     });
   }
   cont.innerHTML = html;
@@ -93,6 +93,12 @@ function renderJobProgress() {
   if (_jvmid && _s === "done") {
     html += '<div style="margin-top:20"><div style="color:#aaa;font-size:12;margin-bottom:8">VM created successfully. Redirecting in ' + _ri + ' seconds...</div>';
     html += '<div style="width:100%;height:2;background:#1a1a1a;border-radius:1;overflow:hidden"><div style="height:100%;background:#22c55e;width:' + (100 - (_ri/10*100)) + '%;transition:width 0.3s"></div></div></div>';
+  }
+  if (_s === "error") {
+    html += '<div style="margin-top:20;display:flex;gap:8">';
+    html += '<button onclick="retryJob()" style="padding:10px 20px;background:#2563eb;border:none;border-radius:6;color:#fff;cursor:pointer;font-size:13;font-weight:500;transition:all 0.2s">Retry</button>';
+    html += '<button onclick="window.location.href=\'/\'" style="padding:10px 20px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6;color:#aaa;cursor:pointer;font-size:13;font-weight:500">Back to Dashboard</button>';
+    html += '</div>';
   }
   html += '</div>';
   return html;
@@ -272,6 +278,25 @@ function deleteVM() {
     }).catch(function(err) { _deleting = false; alert("Deletion failed: " + err.message); renderMain(); });
 }
 
+function retryJob() {
+  if (!jobId) return;
+  var btn = document.querySelector('#content-area button');
+  if (btn) { btn.disabled = true; btn.textContent = 'Retrying...'; }
+
+  api('/api/vm/retry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId })
+  }).then(function(data) {
+    if (data.job_id) {
+      window.location.href = '/vm?job_id=' + data.job_id;
+    }
+  }).catch(function(err) {
+    alert('Retry failed: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  });
+}
+
 function init() {
   function fetchItems() {
     api('/api/vms')
@@ -310,14 +335,16 @@ function init() {
       return; 
     }
 
-    // _items の中から、現在の jobId に一致するデータを検索
-    // (もし items の中に job_id がない場合は、すでに特定できている _jvmid や id で find してください)
     var matchedJob = _items.find(function(item) {
       return item.jobid === jobId;
     });
 
     if (matchedJob) {
       _s = matchedJob.status || "\u2014";
+      _log = matchedJob.log || "";
+      if (matchedJob.VMID) {
+        _jvmid = matchedJob.VMID;
+      }
     } else if (jobId) {
       api('/api/jobs').then(function(jobs) {
         var j = (jobs || []).find(function(j) { return j.jobid === jobId; });

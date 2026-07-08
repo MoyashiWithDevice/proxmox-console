@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS vms (
     status         TEXT        NOT NULL DEFAULT 'creating',
     created_at     TIMESTAMP   NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS isos (
+    id         SERIAL      PRIMARY KEY,
+    user_id    INTEGER     NOT NULL REFERENCES users(id),
+    filename   TEXT        NOT NULL,
+    volume_id  TEXT        NOT NULL,
+    size       BIGINT      NOT NULL DEFAULT 0,
+    created_at TIMESTAMP   NOT NULL DEFAULT NOW()
+);
 `
 
 	if _, err := db.Exec(schemaSQL); err != nil {
@@ -252,6 +261,72 @@ func updateVMStatus(vmID int, status string) error {
 	}
 
 	return nil
+}
+
+// ISO はアップロードされたISO情報を表します
+type ISO struct {
+	ID        int
+	UserID    int
+	Filename  string
+	VolumeID  string
+	Size      int64
+	CreatedAt time.Time
+}
+
+// createISO はISO情報をデータベースに保存します
+func createISO(userID int, filename, volumeID string, size int64) (*ISO, error) {
+	iso := &ISO{}
+	err := db.QueryRow(
+		"INSERT INTO isos (user_id, filename, volume_id, size) VALUES ($1, $2, $3, $4) RETURNING id, user_id, filename, volume_id, size, created_at",
+		userID, filename, volumeID, size,
+	).Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create iso: %w", err)
+	}
+	return iso, nil
+}
+
+// getUserISOs はユーザーのISOリストを取得します
+func getUserISOs(userID int) ([]*ISO, error) {
+	rows, err := db.Query(
+		"SELECT id, user_id, filename, volume_id, size, created_at FROM isos WHERE user_id = $1 ORDER BY created_at DESC",
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query isos: %w", err)
+	}
+	defer rows.Close()
+
+	var isos []*ISO
+	for rows.Next() {
+		iso := &ISO{}
+		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan iso: %w", err)
+		}
+		isos = append(isos, iso)
+	}
+	return isos, nil
+}
+
+// getAllISOs はすべてのISOを取得します（管理者用もしくは全ユーザー共有用）
+func getAllISOs() ([]*ISO, error) {
+	rows, err := db.Query(
+		"SELECT id, user_id, filename, volume_id, size, created_at FROM isos ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query isos: %w", err)
+	}
+	defer rows.Close()
+
+	var isos []*ISO
+	for rows.Next() {
+		iso := &ISO{}
+		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan iso: %w", err)
+		}
+		isos = append(isos, iso)
+	}
+	return isos, nil
 }
 
 // closeDB はデータベース接続を閉じます

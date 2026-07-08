@@ -79,8 +79,59 @@
       <input id="create-servername" type="text" placeholder="例: web-server-01" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
     </div>
     <div style="margin-bottom:16px">
-      <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">OS</div>
-      <select id="create-os" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none"></select>
+      <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">作成方法</div>
+      <div style="display:flex;gap:8px">
+        <button id="create-mode-btn-template" class="create-mode-btn" onclick="selectCreateMode('template')" style="flex:1;background:#2563eb;border:none;color:#fff;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500">テンプレートから</button>
+        <button id="create-mode-btn-iso" class="create-mode-btn" onclick="selectCreateMode('iso')" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#aaa;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500">ISOから</button>
+      </div>
+    </div>
+    <div id="create-mode-template">
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">OS</div>
+        <select id="create-os" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none"></select>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ユーザー名</div>
+        <input id="create-username" type="text" value="user" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
+      </div>
+      <div style="margin-bottom:24px">
+        <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">Cloud-init 実行コマンド</div>
+        <textarea id="create-runcmd" rows="3" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none;resize:vertical;font-family:monospace" placeholder="例:&#10;apt update&#10;apt install -y nginx"></textarea>
+      </div>
+    </div>
+    <div id="create-mode-iso" style="display:none">
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ISOの取得方法</div>
+        <div style="display:flex;gap:8px">
+          <button id="create-iso-tab-upload" class="create-iso-tab-btn" onclick="selectISOTab('upload')" style="flex:1;background:#2563eb;border:none;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500">ファイルからアップロード</button>
+          <button id="create-iso-tab-url" class="create-iso-tab-btn" onclick="selectISOTab('url')" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#aaa;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500">URLからダウンロード</button>
+        </div>
+      </div>
+      <div id="create-iso-upload-section">
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ISOファイルを選択</div>
+          <div style="display:flex;gap:8px">
+            <input id="create-iso-file" type="file" accept=".iso" style="flex:1;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:13px;padding:8px 12px;border-radius:8px;outline:none">
+            <button id="create-iso-upload-btn" onclick="uploadISO()" style="background:#2563eb;border:none;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap">アップロード</button>
+          </div>
+        </div>
+      </div>
+      <div id="create-iso-url-section" style="display:none">
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ISOのURL</div>
+          <div style="display:flex;gap:8px">
+            <input id="create-iso-url" type="text" placeholder="https://example.com/os.iso" style="flex:1;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:13px;padding:8px 12px;border-radius:8px;outline:none">
+            <button id="create-iso-download-btn" onclick="downloadISOFromURL()" style="background:#2563eb;border:none;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap">ダウンロード</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">使用するISO</div>
+        <select id="create-iso-select" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
+          <option value="">ISOを選択してください</option>
+        </select>
+        <div id="create-iso-status" style="font-size:11px;color:#555;margin-top:6px"></div>
+      </div>
     </div>
     <div style="margin-bottom:16px">
       <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">CPU</div>
@@ -102,14 +153,6 @@
         <input id="create-hdd" type="range" min="1" max="200" step="1" value="20" style="flex:1">
         <span id="create-hdd-value" style="font-size:14px;color:#aaa;min-width:60px;text-align:right">20 GB</span>
       </div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">ユーザー名</div>
-      <input id="create-username" type="text" value="user" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none">
-    </div>
-    <div style="margin-bottom:24px">
-      <div style="font-size:11px;color:#777;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">Cloud-init 実行コマンド</div>
-      <textarea id="create-runcmd" rows="3" style="width:100%;background:#0d0d0d;border:1px solid #222;color:#fff;font-size:14px;padding:10px 12px;border-radius:8px;outline:none;resize:vertical;font-family:monospace" placeholder="例:&#10;apt update&#10;apt install -y nginx"></textarea>
     </div>
     <div id="create-status" style="display:none;margin-bottom:16px;padding:10px 12px;border-radius:8px;font-size:13px"></div>
     <div style="display:flex;gap:8px">

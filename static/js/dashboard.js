@@ -87,6 +87,134 @@ function vmAction(vmid, action) {
 
 // ── Create VM Modal ──────────────────────────────────────────────
 var createLimits = { cpu: { min: 1, max: 32, step: 1 }, memory: { min: 512, max: 8192, step: 512 }, hdd: { min: 1, max: 200, step: 1 } };
+var uploadedISOs = [];
+
+function selectCreateMode(mode) {
+  var isIso = mode === 'iso';
+  $('create-mode-template').style.display = isIso ? 'none' : 'block';
+  $('create-mode-iso').style.display = isIso ? 'block' : 'none';
+  document.querySelectorAll('.create-mode-btn').forEach(function(b) { b.style.background = 'rgba(255,255,255,0.05)'; b.style.color = '#aaa'; });
+  var active = isIso ? $('create-mode-btn-iso') : $('create-mode-btn-template');
+  if (active) { active.style.background = '#2563eb'; active.style.color = '#fff'; }
+}
+
+function formatFileSize(bytes) {
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
+function loadISOs() {
+  api('/api/isos').then(function(data) {
+    uploadedISOs = Array.isArray(data) ? data : [];
+    var sel = $('create-iso-select');
+    sel.innerHTML = '<option value="">ISOを選択してください</option>';
+    uploadedISOs.forEach(function(iso) {
+      var opt = document.createElement('option');
+      opt.value = iso.volume_id;
+      opt.textContent = iso.filename + ' (' + formatFileSize(iso.size) + ')';
+      sel.appendChild(opt);
+    });
+    $('create-iso-status').textContent = uploadedISOs.length + ' ISOが利用可能';
+  }).catch(function() {});
+}
+
+function uploadISO() {
+  var fileInput = $('create-iso-file');
+  var file = fileInput.files[0];
+  if (!file) { showCreateStatus('error', 'ISOファイルを選択してください。'); return; }
+
+  if (!file.name.toLowerCase().endsWith('.iso')) {
+    showCreateStatus('error', 'ISOファイルのみアップロード可能です。');
+    return;
+  }
+
+  var btn = $('create-iso-upload-btn');
+  btn.disabled = true;
+  btn.textContent = 'アップロード中…';
+  showCreateStatus(null, '');
+
+  var formData = new FormData();
+  formData.append('iso', file);
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/iso/upload', true);
+  xhr.timeout = 600000;
+
+  xhr.upload.onprogress = function(e) {
+    if (e.lengthComputable) {
+      var pct = Math.round(e.loaded / e.total * 100);
+      btn.textContent = 'アップロード中… ' + pct + '%';
+    }
+  };
+
+  xhr.onload = function() {
+    btn.disabled = false;
+    btn.textContent = 'アップロード';
+    if (xhr.status >= 200 && xhr.status < 300) {
+      showCreateStatus(null, '');
+      loadISOs();
+      fileInput.value = '';
+      var iso = JSON.parse(xhr.responseText);
+      $('create-iso-select').value = iso.volume_id;
+    } else {
+      var msg = 'アップロードに失敗しました';
+      try { var errResp = JSON.parse(xhr.responseText); if (errResp.error) msg = errResp.error; } catch(e) {}
+      showCreateStatus('error', msg);
+    }
+  };
+
+  xhr.onerror = function() {
+    btn.disabled = false;
+    btn.textContent = 'アップロード';
+    showCreateStatus('error', 'ネットワークエラーが発生しました。');
+  };
+
+  xhr.ontimeout = function() {
+    btn.disabled = false;
+    btn.textContent = 'アップロード';
+    showCreateStatus('error', 'アップロードがタイムアウトしました。');
+  };
+
+  xhr.send(formData);
+}
+
+function selectISOTab(tab) {
+  var isUrl = tab === 'url';
+  $('create-iso-upload-section').style.display = isUrl ? 'none' : 'block';
+  $('create-iso-url-section').style.display = isUrl ? 'block' : 'none';
+  document.querySelectorAll('.create-iso-tab-btn').forEach(function(b) { b.style.background = 'rgba(255,255,255,0.05)'; b.style.color = '#aaa'; });
+  var active = isUrl ? $('create-iso-tab-url') : $('create-iso-tab-upload');
+  if (active) { active.style.background = '#2563eb'; active.style.color = '#fff'; }
+}
+
+function downloadISOFromURL() {
+  var url = $('create-iso-url').value.trim();
+  if (!url) { showCreateStatus('error', 'URLを入力してください。'); return; }
+
+  var btn = $('create-iso-download-btn');
+  btn.disabled = true;
+  btn.textContent = 'ダウンロード中…';
+  showCreateStatus(null, '');
+
+  api('/api/iso/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: url })
+  }).then(function(iso) {
+    btn.disabled = false;
+    btn.textContent = 'URLからダウンロード';
+    showCreateStatus(null, '');
+    loadISOs();
+    $('create-iso-url').value = '';
+    $('create-iso-select').value = iso.volume_id;
+  }).catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'URLからダウンロード';
+    showCreateStatus('error', 'ダウンロードに失敗しました: ' + err.message);
+  });
+}
 
 function openCreateModal() {
   var modal = $('create-modal');
@@ -95,9 +223,10 @@ function openCreateModal() {
   $('create-submit').disabled = false;
   $('create-submit').textContent = '作成';
 
+  selectCreateMode('template');
+
   // Load settings for OS list and resource limits
   api('/api/settings').then(function(data) {
-    // populate OS dropdown
     var osSel = $('create-os');
     osSel.innerHTML = '';
     if (data.os && Array.isArray(data.os)) {
@@ -116,6 +245,8 @@ function openCreateModal() {
     if (data.Os) osSel.value = data.Os;
     if (data.Runcmd) $('create-runcmd').value = data.Runcmd;
   }).catch(function() {});
+
+  loadISOs();
 
   updateSliderDisplay('create-cpu', 'create-cpu-value', 'Cores');
   updateSliderDisplay('create-memory', 'create-memory-value', 'GB', 1024);
@@ -157,15 +288,26 @@ function submitCreateVM() {
     btn.style.background = '#334155';
     showCreateStatus(null, '');
 
+    var isIsoMode = $('create-mode-iso').style.display !== 'none';
     var payload = {
       servername: servername,
-      os: $('create-os').value,
       cpu: parseInt($('create-cpu').value, 10),
       memory: parseInt($('create-memory').value, 10),
-      hdd: parseInt($('create-hdd').value, 10),
-      username: $('create-username').value.trim() || 'user',
-      runcmd: $('create-runcmd').value
+      hdd: parseInt($('create-hdd').value, 10)
     };
+
+    if (isIsoMode) {
+      var isoVolume = $('create-iso-select').value;
+      if (!isoVolume) { showCreateStatus('error', 'ISOを選択してください。'); btn.disabled = false; btn.textContent = '作成'; btn.style.background = '#2563eb'; return; }
+      payload.iso_volume = isoVolume;
+      payload.os = '';
+      payload.username = '';
+      payload.runcmd = '';
+    } else {
+      payload.os = $('create-os').value;
+      payload.username = $('create-username').value.trim() || 'user';
+      payload.runcmd = $('create-runcmd').value;
+    }
 
     var xhr = new XMLHttpRequest();
     xhr.open('PUT', '/api/vm', true);

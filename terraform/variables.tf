@@ -12,3 +12,7 @@ variable "agent_pubkey" { sensitive = true }
 variable "runcmd" {
   default = ""
 }
+
+variable "iso_volume_id" {
+  default = ""
+}

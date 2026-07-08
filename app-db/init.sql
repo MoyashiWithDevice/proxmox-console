@@ -15,3 +15,12 @@ CREATE TABLE IF NOT EXISTS vms (
     status         TEXT        NOT NULL DEFAULT 'creating',
     created_at     TIMESTAMP   NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS isos (
+    id         SERIAL      PRIMARY KEY,
+    user_id    INTEGER     NOT NULL REFERENCES users(id),
+    filename   TEXT        NOT NULL,
+    volume_id  TEXT        NOT NULL,
+    size       BIGINT      NOT NULL DEFAULT 0,
+    created_at TIMESTAMP   NOT NULL DEFAULT NOW()
+);

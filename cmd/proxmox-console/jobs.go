@@ -23,20 +23,6 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	// ---------------- バリデーション----------------
-	// --- OS バリデーション ---
-	var selectedOS *OSOption
-	for i := range SettingsConf.OS {
-		if SettingsConf.OS[i].ID == req.OS {
-			selectedOS = &SettingsConf.OS[i]
-			break
-		}
-	}
-	if selectedOS == nil {
-		failJob(jobID, "Requested value is invalid【OS】 :", err)
-		return
-	}
-
 	// --- リソース範囲バリデーション ---
 	res := SettingsConf.Resources
 	if req.CPU < res.CPU.Min || req.CPU > res.CPU.Max {
@@ -82,6 +68,23 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
 
+	var selectedOS *OSOption
+	useISO := req.ISOVolume != ""
+
+	if !useISO {
+		// --- OS バリデーション（clone モード） ---
+		for i := range SettingsConf.OS {
+			if SettingsConf.OS[i].ID == req.OS {
+				selectedOS = &SettingsConf.OS[i]
+				break
+			}
+		}
+		if selectedOS == nil {
+			failJob(jobID, "Requested value is invalid【OS】 :", err)
+			return
+		}
+	}
+
 	userPrivkey, userPubkey, err := generateSSHKeyPair()
 	if err != nil {
 		failJob(jobID, "Error creating key:", err)
@@ -99,7 +102,19 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	tfvars := fmt.Sprintf(`
+	var tfvars string
+	if useISO {
+		tfvars = fmt.Sprintf(`
+servername      = "%s"
+cpu             = %d
+memory          = %d
+hdd             = %d
+iso_volume_id   = "%s"
+`,
+			req.Servername, req.CPU, req.Memory, req.HDD, req.ISOVolume,
+		)
+	} else {
+		tfvars = fmt.Sprintf(`
 servername    = "%s"
 cpu           = %d
 memory        = %d
@@ -117,13 +132,14 @@ runcmd        =<<EOT
 %s
 EOT
 `,
-		req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
-		userPubkey, agentUser, agentPubkey, req.Runcmd,
-	)
+			req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
+			userPubkey, agentUser, agentPubkey, req.Runcmd,
+		)
+	}
 
 	os.WriteFile(filepath.Join(workdir, "runtime.tfvars"), []byte(tfvars), 0600)
 	// ルートの共通テンプレートを各VMワークディレクトリにリンク
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+	if err := ensureTerraformTemplateLinks(workdir, req.ISOVolume); err != nil {
 		failJob(jobID, "Error linking Terraform templates:", err)
 		return
 	}
@@ -213,13 +229,23 @@ func applyTerraform(workdir string) error {
 	return tf.Apply(ctx, tfexec.VarFile("runtime.tfvars"))
 }
 
-func ensureTerraformTemplateLinks(workdir string) error {
-	templateFiles := []string{
-		"provider.tf",
-		"variables.tf",
-		"snippets.tf",
-		"vm.tf",
-		"cloud-config.yaml",
+func ensureTerraformTemplateLinks(workdir string, isoVolumeID string) error {
+	var templateFiles []string
+
+	if isoVolumeID != "" {
+		templateFiles = []string{
+			"provider.tf",
+			"variables.tf",
+			"vm-iso.tf",
+		}
+	} else {
+		templateFiles = []string{
+			"provider.tf",
+			"variables.tf",
+			"snippets.tf",
+			"vm.tf",
+			"cloud-config.yaml",
+		}
 	}
 
 	for _, name := range templateFiles {

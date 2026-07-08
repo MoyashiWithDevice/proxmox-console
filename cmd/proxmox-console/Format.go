@@ -9,6 +9,7 @@ type VMRequest struct {
 	Username   string `json:"username,omitempty"`
 	OS         string `json:"os,omitempty"`
 	Runcmd     string `json:"runcmd,omitempty"`
+	ISOVolume  string `json:"iso_volume,omitempty"`
 }
 
 type VMResponse struct {
@@ -22,6 +23,14 @@ type VMResponse struct {
 	OS         string `json:"os,omitempty"`
 	Status     string `json:"status,omitempty"`
 	IP         string `json:"IP,omitempty"`
+}
+
+type ISOInfo struct {
+	ID        int    `json:"id"`
+	Filename  string `json:"filename"`
+	VolumeID  string `json:"volume_id"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"created_at"`
 }
 
 type Job struct {

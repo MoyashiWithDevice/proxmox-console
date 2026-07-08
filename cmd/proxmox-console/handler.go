@@ -20,6 +20,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const maxISOSize = 10 << 30 // 10GB max ISO upload size
+
 var wsUpgrader = websocket.Upgrader{
 	HandshakeTimeout: 10 * time.Second,
 	// 必要に応じてOriginを検証してください
@@ -741,7 +743,7 @@ func updateVMResources(userID string, req VMRequest) error {
 		return err
 	}
 
-	if err := ensureTerraformTemplateLinks(workdir); err != nil {
+	if err := ensureTerraformTemplateLinks(workdir, ""); err != nil {
 		return err
 	}
 
@@ -856,6 +858,184 @@ func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(resp)
+}
+
+// POST /api/iso/upload
+func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxISOSize)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "file too large or invalid form")
+		return
+	}
+
+	file, header, err := r.FormFile("iso")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "missing iso file")
+		return
+	}
+	defer file.Close()
+
+	filename := header.Filename
+	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		writeJSONError(w, http.StatusBadRequest, "file must be an ISO image")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	volumeID, err := uploadISOToProxmox(ctx, filename, file, header.Size)
+	if err != nil {
+		log.Printf("ISO upload failed: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "ISO upload failed: "+err.Error())
+		return
+	}
+
+	iso, err := createISO(dbUserID, filename, volumeID, header.Size)
+	if err != nil {
+		log.Printf("failed to save ISO record: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ISOInfo{
+		ID:        iso.ID,
+		Filename:  iso.Filename,
+		VolumeID:  iso.VolumeID,
+		Size:      iso.Size,
+		CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+	})
+}
+
+// POST /api/iso/download
+func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var req struct {
+		URL      string `json:"url"`
+		Filename string `json:"filename,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.URL == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing url")
+		return
+	}
+
+	filename := req.Filename
+	if filename == "" {
+		parts := strings.Split(strings.TrimRight(req.URL, "/"), "/")
+		filename = parts[len(parts)-1]
+		if filename == "" || !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+			filename = "downloaded.iso"
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	volumeID, err := downloadISOFromURL(ctx, req.URL, filename)
+	if err != nil {
+		log.Printf("ISO download failed: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "ISO download failed: "+err.Error())
+		return
+	}
+
+	iso, err := createISO(dbUserID, filename, volumeID, 0)
+	if err != nil {
+		log.Printf("failed to save ISO record: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ISOInfo{
+		ID:        iso.ID,
+		Filename:  iso.Filename,
+		VolumeID:  iso.VolumeID,
+		Size:      iso.Size,
+		CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+	})
+}
+
+// GET /api/isos
+func listISOsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	isos, err := getUserISOs(dbUserID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to list ISOs")
+		return
+	}
+
+	var result []ISOInfo
+	for _, iso := range isos {
+		result = append(result, ISOInfo{
+			ID:        iso.ID,
+			Filename:  iso.Filename,
+			VolumeID:  iso.VolumeID,
+			Size:      iso.Size,
+			CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	if result == nil {
+		result = []ISOInfo{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 type flushWriter struct {

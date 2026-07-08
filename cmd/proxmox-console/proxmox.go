@@ -5,7 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -171,4 +174,100 @@ func stopProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 		fmt.Printf("Successfully stopped VM %d\n", vmid)
 	}()
 	return nil
+}
+
+// uploadISOToProxmox は ISO ファイルを Proxmox ストレージにアップロードします
+// returns volumeID (例: "local:iso/filename.iso")
+func uploadISOToProxmox(ctx context.Context, filename string, file io.Reader, fileSize int64) (string, error) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get proxmox client: %w", err)
+	}
+
+	nodes, err := client.Nodes(ctx)
+	if err != nil || len(nodes) == 0 {
+		return "", fmt.Errorf("failed to get proxmox nodes: %w", err)
+	}
+
+	nodeName := nodes[0].Name
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get proxmox node %s: %w", nodeName, err)
+	}
+
+	storage, err := node.StorageISO(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to find ISO storage: %w", err)
+	}
+
+	// Save uploaded file to temp file (Storage.Upload requires a file path)
+	tmpDir, err := os.MkdirTemp("", "iso-upload-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpPath := filepath.Join(tmpDir, filename)
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	if _, err := io.Copy(f, file); err != nil {
+		f.Close()
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	f.Close()
+
+	task, err := storage.Upload("iso", tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload iso: %w", err)
+	}
+
+	if err := task.WaitFor(ctx, 300); err != nil {
+		return "", fmt.Errorf("failed to wait for iso upload: %w", err)
+	}
+
+	volumeID := fmt.Sprintf("%s:iso/%s", storage.Name, filename)
+	return volumeID, nil
+}
+
+// downloadISOFromURL は URL から ISO を Proxmox ストレージにダウンロードします
+// returns volumeID (例: "local:iso/filename.iso")
+func downloadISOFromURL(ctx context.Context, urlStr, filename string) (string, error) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get proxmox client: %w", err)
+	}
+
+	nodes, err := client.Nodes(ctx)
+	if err != nil || len(nodes) == 0 {
+		return "", fmt.Errorf("failed to get proxmox nodes: %w", err)
+	}
+
+	nodeName := nodes[0].Name
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get proxmox node %s: %w", nodeName, err)
+	}
+
+	storage, err := node.StorageISO(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to find ISO storage: %w", err)
+	}
+
+	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		filename += ".iso"
+	}
+
+	task, err := storage.DownloadURL(ctx, "iso", filename, urlStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to download iso: %w", err)
+	}
+
+	if err := task.WaitFor(ctx, 600); err != nil {
+		return "", fmt.Errorf("failed to wait for iso download: %w", err)
+	}
+
+	volumeID := fmt.Sprintf("%s:iso/%s", storage.Name, filename)
+	return volumeID, nil
 }

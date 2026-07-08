@@ -90,7 +90,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 
 	jobs.Range(func(key, value interface{}) bool {
 		job := value.(*Job)
-		if job.OwnerID != userID || job.Status == "done" {
+		if job.OwnerID != userID || job.Status == "done" || job.Status == "retried" {
 			return true
 		}
 		result = append(result, VMResponse{
@@ -140,7 +140,8 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID})
+	reqCopy := req
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: kratosUserID, Request: &reqCopy})
 
 	go runTerraformJob(jobID, &req, r)
 
@@ -150,6 +151,84 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
+}
+
+// POST: /api/vm/retry
+func retryVMHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.JobID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing job_id")
+		return
+	}
+
+	jobAny, ok := jobs.Load(req.JobID)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "job not found")
+		return
+	}
+
+	job := jobAny.(*Job)
+	if job.OwnerID != userID {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	if job.Status != "error" {
+		writeJSONError(w, http.StatusBadRequest, "job is not in error state")
+		return
+	}
+
+	if job.Request == nil {
+		writeJSONError(w, http.StatusBadRequest, "original request not found")
+		return
+	}
+
+	// Clean up old workdir
+	if job.Workdir != "" {
+		if err := os.RemoveAll(job.Workdir); err != nil {
+			fmt.Println("Warning: failed to clean up old workdir:", err)
+		}
+	}
+
+	// Mark old job as retried
+	job.Status = "retried"
+	jobs.Store(req.JobID, job)
+
+	// Create new job with the same request
+	newJobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	newReq := *job.Request
+
+	newJob := &Job{
+		Status:     "running",
+		Servername: newReq.Servername,
+		OwnerID:    userID,
+		Request:    &newReq,
+	}
+	jobs.Store(newJobID, newJob)
+
+	go runTerraformJob(newJobID, &newReq, r)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"job_id": newJobID})
 }
 
 // PATCH: /api/vm

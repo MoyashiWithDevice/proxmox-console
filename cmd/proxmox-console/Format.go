@@ -42,4 +42,5 @@ type Job struct {
 	NodeName   string
 	Servername string
 	OwnerID    string
+	Request    *VMRequest
 }

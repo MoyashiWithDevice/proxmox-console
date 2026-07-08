@@ -106,7 +106,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 // PUT, PATCH, DELETE: /api/vm
 func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
 
-	if r.Method == http.MethodPut {
+	if r.Method == http.MethodPost {
 		createVMHandler(w, r)
 	} else if r.Method == http.MethodPatch {
 		updateVMHandler(w, r)

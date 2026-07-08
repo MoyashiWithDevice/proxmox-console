@@ -1,40 +1,29 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchSettings } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { Layout } from '../components/Layout';
 import type { SettingsResponse } from '../types';
 
 export function ServerInfo() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [os, setOs] = useState('');
   const [hostname, setHostname] = useState('');
   const [sshPort, setSshPort] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   useEffect(() => {
     fetchSettings().then((data) => {
       setSettings(data);
       setOs(data.os?.[0]?.id || '');
-    }).catch(() => setStatus({ type: 'error', msg: 'Failed to load settings.' }));
+    }).catch(() => {});
   }, []);
 
-  async function handleSave() {
-    setSaving(true);
-    setStatus(null);
-    try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Os: os, Hostname: hostname, SSHPort: sshPort }),
-      });
-      setStatus({ type: 'success', msg: 'Settings saved.' });
-    } catch (err: unknown) {
-      setStatus({ type: 'error', msg: (err as Error).message });
-    } finally {
-      setSaving(false);
-    }
+  function handleNext() {
+    sessionStorage.setItem('vmOs', os);
+    sessionStorage.setItem('vmHostname', hostname);
+    sessionStorage.setItem('vmSshPort', sshPort);
+    navigate('/resource');
   }
 
   if (!settings) {
@@ -71,20 +60,15 @@ export function ServerInfo() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={handleSave}
-            disabled={saving}
+            onClick={handleNext}
             style={{
-              background: saving ? '#334155' : '#2563eb', color: '#fff', border: 'none',
-              padding: '12px 24px', borderRadius: 10, cursor: saving ? 'default' : 'pointer', fontSize: 14, fontWeight: 500,
+              background: '#2563eb', color: '#fff', border: 'none',
+              padding: '12px 24px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            {saving ? 'Saving...' : 'Save'}
+            Next <Icon name="arrowRight" />
           </button>
-          {status && (
-            <div style={{ fontSize: 14, color: status.type === 'success' ? '#22c55e' : '#f43f5e' }}>
-              {status.msg}
-            </div>
-          )}
         </div>
       </div>
     </Layout>

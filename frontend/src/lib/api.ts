@@ -17,6 +17,14 @@ export function fetchVMs(): Promise<VMResponse[]> {
   return api<VMResponse[]>('/api/vms');
 }
 
+export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number }): Promise<{ job_id: string }> {
+  return api('/api/vm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+}
+
 export function updateVM(req: VMRequest): Promise<{ job_id: string; status: string }> {
   return api('/api/vm', {
     method: 'PATCH',

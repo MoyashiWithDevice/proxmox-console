@@ -11,7 +11,7 @@ export function Dashboard() {
   const navigate = useNavigate();
 
   const loadVMs = useCallback(() => {
-    fetchVMs().then(setItems).catch(() => {});
+    fetchVMs().then((data) => setItems(data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -107,16 +107,28 @@ export function Dashboard() {
               <Icon name="layers" />
               <h2 style={{ fontSize: 16, fontWeight: 600 }}>Virtual Machines</h2>
             </div>
-            <button
-              onClick={loadVMs}
-              style={{
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                color: '#fff', padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
-              }}
-            >
-              <Icon name="refresh" /> Refresh
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => navigate('/info')}
+                style={{
+                  background: '#22c55e', border: 'none',
+                  color: '#fff', padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500,
+                }}
+              >
+                <Icon name="plus" /> Create VM
+              </button>
+              <button
+                onClick={loadVMs}
+                style={{
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#fff', padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+                }}
+              >
+                <Icon name="refresh" /> Refresh
+              </button>
+            </div>
           </div>
 
           <table className="vm-table" style={{

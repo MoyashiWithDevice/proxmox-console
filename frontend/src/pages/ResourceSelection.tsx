@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { fetchSettings } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { fetchSettings, createVM } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { Layout } from '../components/Layout';
 import type { SettingsResponse } from '../types';
 
 export function ResourceSelection() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [hdd, setHdd] = useState(50);
   const [cpu, setCpu] = useState(4);
   const [mem, setMem] = useState(8);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     fetchSettings().then((data) => {
@@ -18,6 +21,27 @@ export function ResourceSelection() {
       if (data.memory) setMem(data.memory.min || 8);
     }).catch(() => {});
   }, []);
+
+  async function handleCreate() {
+    setCreating(true);
+    try {
+      const os = sessionStorage.getItem('vmOs') || '';
+      const hostname = sessionStorage.getItem('vmHostname') || '';
+      const { job_id } = await createVM({
+        servername: hostname,
+        os,
+        cpu,
+        memory: mem,
+        hdd,
+      });
+      sessionStorage.removeItem('vmOs');
+      sessionStorage.removeItem('vmHostname');
+      sessionStorage.removeItem('vmSshPort');
+      navigate(`/vm?job_id=${job_id}`);
+    } catch {
+      setCreating(false);
+    }
+  }
 
   if (!settings) {
     return <Layout><div style={{ color: '#888', fontSize: 14 }}>Loading...</div></Layout>;
@@ -64,6 +88,31 @@ export function ResourceSelection() {
           step={settings.memory?.step || 1}
           unit="GB"
         />
+
+        <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => navigate('/info')}
+            style={{
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+              color: '#fff', padding: '12px 24px', borderRadius: 10, cursor: 'pointer',
+              fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Icon name="arrowLeft" /> Back
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            style={{
+              background: creating ? '#334155' : '#22c55e',
+              color: '#fff', border: 'none', padding: '12px 24px', borderRadius: 10,
+              cursor: creating ? 'default' : 'pointer', fontSize: 14, fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {creating ? 'Creating...' : <><Icon name="plus" /> Create VM</>}
+          </button>
+        </div>
       </div>
     </Layout>
   );

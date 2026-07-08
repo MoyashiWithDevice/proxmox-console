@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { changeVMState, updateVM, downloadKey, fetchVMs, STATUS_COLORS } from '../lib/api';
 import { Icon } from '../components/Icon';
-import { StatusBadge, StatusDot } from '../components/StatusBadge';
+import { Badge } from '../components/Badge';
+import { StatusDot } from '../components/StatusBadge';
 import type { VMResponse } from '../types';
 
 export function VMDetail() {
@@ -173,15 +174,31 @@ export function VMDetail() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', padding: '0 32px', height: 52, borderBottom: '1px solid #111', flexShrink: 0, background: '#000' }}>
-        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 24px', height: 52, borderBottom: '1px solid #111', flexShrink: 0, background: '#000' }}>
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160, textDecoration: 'none' }}>
+          <Icon name="server" size={16} color="#fff" />
           <span style={{ fontSize: 14, fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>Proxmox Console</span>
           <span style={{ fontSize: 11, color: '#333', marginLeft: 2 }}>v1.0</span>
         </a>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, maxWidth: 320, position: 'relative' }}>
+          <Icon name="search" size={12} color="#333" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            type="text" placeholder="Search…" aria-label="Search"
+            style={{
+              width: '100%', background: '#000', border: '1px solid #111',
+              borderRadius: 4, padding: '6px 10px 6px 28px',
+              color: '#fff', fontSize: 12, outline: 'none',
+            }}
+          />
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 20 }}>
+          <button aria-label="Notifications" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <Icon name="bell" size={15} color="#333" />
+          </button>
+          <span style={{ fontSize: 12, color: '#444' }}>admin</span>
           <button
             onClick={() => navigate(`/support${target ? `?vmid=${target}` : ''}`)}
-            style={{ background: 'none', border: '1px solid #222', cursor: 'pointer', padding: '8px 12px', borderRadius: 4, color: '#ddd', fontSize: 12 }}
+            style={{ background: 'none', border: '1px solid #111', cursor: 'pointer', padding: '6px 12px', borderRadius: 4, color: '#444', fontSize: 12 }}
           >
             Support
           </button>
@@ -189,7 +206,7 @@ export function VMDetail() {
             onClick={() => { window.location.href = '/logout'; }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#444', fontSize: 12 }}
           >
-            <Icon name="logOut" /> Logout
+            <Icon name="logOut" size={12} /> Logout
           </button>
         </div>
       </div>
@@ -201,7 +218,7 @@ export function VMDetail() {
             onClick={() => navigate('/')}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px 10px', cursor: 'pointer', fontSize: 12, color: '#333', borderBottom: '1px solid #0d0d0d', marginBottom: 8, fontWeight: 500 }}
           >
-            <Icon name="arrowLeft" /> Dashboard
+            <Icon name="arrowLeft" size={12} /> Dashboard
           </div>
           <div style={{ padding: '4px 18px', fontSize: 10, color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
             Virtual Machines
@@ -223,10 +240,10 @@ export function VMDetail() {
                     onMouseEnter={() => setHovered(`vm-${v.VMID}`)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => navigate(`/vm?vmid=${v.VMID}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color, background: bg, borderLeft: borderL, userSelect: 'none', transition: 'all 0.15s', marginBottom: 2, borderRadius: '0 6px 6px 0' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color, background: bg, borderLeft: borderL, userSelect: 'none' }}
                   >
                     <StatusDot status={vmStatus} />
-                    <Icon name="monitor" width={13} height={13} color={color} />
+                    <Icon name="monitor" size={13} color={color} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {v.Name || 'Unnamed'}
                     </span>
@@ -253,10 +270,10 @@ export function VMDetail() {
                     onMouseEnter={() => setHovered(`job-${jid}`)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => navigate(`/vm?job_id=${jid}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color: jcolor, background: isActiveJob ? '#111' : 'transparent', borderLeft: isActiveJob ? '2px solid #fff' : '2px solid transparent', userSelect: 'none', transition: 'all 0.15s', marginBottom: 2, borderRadius: '0 6px 6px 0' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color: jcolor, background: isActiveJob ? '#111' : 'transparent', borderLeft: isActiveJob ? '2px solid #fff' : '2px solid transparent', userSelect: 'none' }}
                   >
                     <StatusDot status={j.Status || j.status || ''} />
-                    <Icon name="monitor" width={13} height={13} color={js} />
+                    <Icon name="monitor" size={13} color={js} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {j.Servername || j.servername || ''} (creating)
                     </span>
@@ -268,35 +285,35 @@ export function VMDetail() {
         </div>
 
         {/* Main Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', background: '#000' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', background: '#000' }}>
           {isJobView ? (
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', marginBottom: 6, color: '#fff' }}>VM Creation</h1>
               <p style={{ fontSize: 12, color: '#333', marginBottom: 32 }}>Track your VM creation progress</p>
-              <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 4, padding: 24 }}>
+              <div style={{ background: '#000', border: '1px solid #111', padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                  <span style={{ fontSize: 10, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
-                  <StatusBadge status={jobStatus} />
+                  <span style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
+                  <Badge status={jobStatus} />
                 </div>
                 <div
                   ref={logRef}
-                  style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 4, padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
+                  style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
                   dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
                 />
                 {jobVMID && jobStatus === 'done' && (
                   <div style={{ marginTop: 20 }}>
-                    <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+                    <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
                       VM created successfully. Redirecting in {countdown} seconds...
                     </div>
-                    <div style={{ width: '100%', height: 2, background: '#1a1a1a', borderRadius: 1, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%`, transition: 'width 0.3s' }} />
+                    <div style={{ width: '100%', height: 2, background: '#111' }}>
+                      <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%` }} />
                     </div>
                   </div>
                 )}
               </div>
             </div>
           ) : !id ? (
-            <div style={{ color: '#666', fontSize: 13 }}>Select a VM from the list to view details</div>
+            <div style={{ color: '#555', fontSize: 13 }}>Select a VM from the list to view details</div>
           ) : !vm ? (
             <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>
           ) : (
@@ -305,14 +322,14 @@ export function VMDetail() {
               <div style={{ display: 'flex', gap: 10, marginBottom: 28, alignItems: 'center' }}>
                 <button
                   onClick={() => window.open(`/terminal?vmid=${vm.VMID}`, '_blank', 'noopener,noreferrer')}
-                  style={{ padding: '8px 16px', borderRadius: 4, border: '1px solid #2563eb', background: 'rgba(37,99,235,0.1)', color: '#60a5fa', cursor: 'pointer', fontSize: 12, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  style={ghostBtn}
                 >
-                  <Icon name="terminal" width={13} height={13} color="#60a5fa" /> Terminal
+                  <Icon name="terminal" size={12} color="#444" /> Terminal
                 </button>
                 {!editing && (
                   <button
                     onClick={() => handleToggleVM(vm.VMID!, (vm.Status || 'stopped') === 'running' ? 'stop' : 'start')}
-                    style={{ padding: '8px 16px', borderRadius: 4, border: '1px solid #1a1a1a', background: '#111', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+                    style={ghostBtn}
                   >
                     {(vm.Status || 'stopped') === 'running' ? 'Stop' : 'Start'}
                   </button>
@@ -320,8 +337,8 @@ export function VMDetail() {
               </div>
 
               {/* VM Info Card */}
-              <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 4, padding: 24, marginBottom: 24 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid #1a1a1a' }}>
+              <div style={{ background: '#000', border: '1px solid #111', padding: 24, marginBottom: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid #111' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', gap: 32 }}>
                       <FieldLabel label="VMID" value={String(vm.VMID)} mono />
@@ -331,13 +348,13 @@ export function VMDetail() {
                   {editing ? (
                     <div>
                       <button onClick={() => { setEditing(false); if (vm) { setName(vm.Name || ''); setCores(vm.Cores || vm.CPU || 0); setMem(vm.Memory || 0); setHdd(vm.HDD || vm.Hdd || 0); } }}
-                        style={{ marginRight: 8, padding: '8px 14px', background: 'transparent', border: '1px solid #1a1a1a', borderRadius: 4, color: '#aaa', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+                        style={{ marginRight: 8, ...ghostBtn }}>
                         Cancel
                       </button>
                       <button
                         onClick={handleSave}
                         disabled={saving}
-                        style={{ padding: '8px 14px', background: '#fff', color: '#000', border: 'none', borderRadius: 4, cursor: saving ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+                        style={{ ...ghostBtn, color: saving ? '#555' : '#fff' }}>
                         {saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
@@ -345,7 +362,7 @@ export function VMDetail() {
                     <div>
                       <button
                         onClick={() => setEditing(true)}
-                        style={{ padding: '8px 14px', background: '#fff', color: '#000', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        style={ghostBtn}>
                         Edit
                       </button>
                     </div>
@@ -384,11 +401,11 @@ export function VMDetail() {
                 </div>
 
                 {!editing && (
-                  <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #1a1a1a' }}>
+                  <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #111' }}>
                     <button
                       onClick={handleDownloadKey}
-                      style={{ padding: '8px 12px', background: 'transparent', border: '1px solid #1a1a1a', borderRadius: 4, color: '#666', cursor: 'pointer', fontSize: 12, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <Icon name="download" width={12} height={12} color="#666" /> Download Private Key
+                      style={{ ...ghostBtn, padding: '8px 12px' }}>
+                      <Icon name="download" size={12} color="#444" /> Download Private Key
                     </button>
                   </div>
                 )}
@@ -396,14 +413,14 @@ export function VMDetail() {
 
               {/* Danger Zone */}
               {!editing && (
-                <div style={{ background: 'rgba(244,63,94,0.05)', border: '1px solid #f43f5e', borderRadius: 4, padding: 24 }}>
+                <div style={{ border: '1px solid #f43f5e', padding: 24 }}>
                   <h3 style={{ fontSize: 13, fontWeight: 600, color: '#f43f5e', marginBottom: 8 }}>Danger Zone</h3>
                   <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>This action cannot be undone. The virtual machine will be permanently deleted.</p>
                   <button
                     onClick={handleDelete}
                     disabled={deleting}
-                    style={{ padding: '10px 16px', background: '#dc2626', border: 'none', borderRadius: 4, color: '#fff', cursor: deleting ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, opacity: deleting ? 0.7 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Icon name="trash" width={13} height={13} color="#fff" /> {deleting ? 'Deleting...' : 'Delete VM'}
+                    style={{ padding: '8px 14px', border: '1px solid #f43f5e', borderRadius: 4, background: 'transparent', color: '#f43f5e', cursor: deleting ? 'default' : 'pointer', fontSize: 12, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: deleting ? 0.5 : 1 }}>
+                    <Icon name="trash" size={12} color="#f43f5e" /> {deleting ? 'Deleting...' : 'Delete VM'}
                   </button>
                 </div>
               )}
@@ -411,7 +428,7 @@ export function VMDetail() {
               {/* Support link */}
               <div style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid #111' }}>
                 <p style={{ fontSize: 12, color: '#555' }}>
-                  <a href={`/support?vmid=${target}`} style={{ color: '#666', textDecoration: 'none' }}>
+                  <a href={`/support?vmid=${target}`} style={{ color: '#555', textDecoration: 'none' }}>
                     Need help? Contact support →
                   </a>
                 </p>
@@ -444,16 +461,30 @@ function EditField({ label, children }: { label: string; children: React.ReactNo
 
 function ViewValue({ value }: { value: string }) {
   return (
-    <div style={{ color: '#bbb', fontSize: 14, padding: '10px 12px', background: '#0a0a0a', borderRadius: 4, border: '1px solid #1a1a1a', fontWeight: 400 }}>
+    <div style={{ color: '#ccc', fontSize: 14, padding: '10px 12px', background: '#000', border: '1px solid #111', fontWeight: 400 }}>
       {value}
     </div>
   );
 }
 
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 500,
+  padding: '8px 14px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: '#0a0a0a',
-  border: '1px solid #1a1a1a',
+  background: '#000',
+  border: '1px solid #111',
   color: '#fff',
   fontSize: 14,
   padding: '10px 12px',
@@ -480,15 +511,15 @@ function colorizeTerraformLog(text: string): string {
         .replace(/(\d+) to destroy/g, '<span style="color:#ef4444">$1 to destroy</span>');
       out.push(line);
       continue;
-    } else if (/^- (Finding|Installing|Downloading)/.test(L)) c = '#60a5fa';
+    } else if (/^- (Finding|Installing|Downloading)/.test(L)) c = '#888';
     else if (/^(Initializing|Terraform has been successfully initialized)/.test(L)) c = '#22c55e';
     else if (/Terraform (will perform|used the selected)/.test(L)) c = '#ccc';
     else if (/Creation complete after/.test(L)) c = '#22c55e';
-    else if (/(Still creating|Still destroying)\.\.\./.test(L)) c = '#666';
+    else if (/(Still creating|Still destroying)\.\.\./.test(L)) c = '#555';
     else if (/Creating\.\.\./.test(L)) c = '#f59e0b';
     else if (/^  # .+ (will be |must be)/.test(L)) c = '#bbb';
-    else if (/^\s+(with|on)\s/.test(L)) c = '#b91c1c';
-    else if (/^\s+\d+: /.test(L)) c = '#b91c1c';
+    else if (/^\s+(with|on)\s/.test(L)) c = '#888';
+    else if (/^\s+\d+: /.test(L)) c = '#888';
 
     if (c) {
       out.push(`<span style="color:${c}">${line}</span>`);

@@ -78,7 +78,7 @@ export function TerminalPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', height: 44, background: '#0d0d0d', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', height: 44, background: '#000', borderBottom: '1px solid #111', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#aaa' }}>Terminal</span>
           <span style={{ fontSize: 11, color: '#444' }}>{vmid}</span>
@@ -86,7 +86,7 @@ export function TerminalPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => { window.location.href = `/vm?vmid=${vmid}`; }}
-            style={{ background: 'none', border: '1px solid #222', color: '#888', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
+            style={{ background: 'none', border: '1px solid #111', color: '#444', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
           >
             Back
           </button>

@@ -44,17 +44,16 @@ export function ResourceSelection() {
   }
 
   if (!settings) {
-    return <Layout><div style={{ color: '#888', fontSize: 14 }}>Loading...</div></Layout>;
+    return <Layout><div style={{ color: '#555', fontSize: 13 }}>Loading...</div></Layout>;
   }
 
   return (
     <Layout>
-      <DashHeader />
-      <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: 32 }}>
+      <div style={{ flex: 1, maxWidth: 800, margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon name="hardDrive" />
-            <div style={{ fontSize: 18, fontWeight: 600 }}>Resource Selection</div>
+            <Icon name="hardDrive" size={18} color="#fff" />
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Resource Selection</div>
           </div>
         </div>
 
@@ -92,25 +91,16 @@ export function ResourceSelection() {
         <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => navigate('/info')}
-            style={{
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: '#fff', padding: '12px 24px', borderRadius: 10, cursor: 'pointer',
-              fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6,
-            }}
+            style={ghostBtn}
           >
-            <Icon name="arrowLeft" /> Back
+            <Icon name="arrowLeft" size={12} /> Back
           </button>
           <button
             onClick={handleCreate}
             disabled={creating}
-            style={{
-              background: creating ? '#334155' : '#22c55e',
-              color: '#fff', border: 'none', padding: '12px 24px', borderRadius: 10,
-              cursor: creating ? 'default' : 'pointer', fontSize: 14, fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
+            style={{ ...ghostBtn, color: creating ? '#555' : '#fff' }}
           >
-            {creating ? 'Creating...' : <><Icon name="plus" /> Create VM</>}
+            {creating ? 'Creating...' : <><Icon name="plus" size={12} /> Create VM</>}
           </button>
         </div>
       </div>
@@ -132,10 +122,10 @@ function SliderRow({ icon, label, value, setValue, min, max, step, unit }: {
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Icon name={icon} />
-          <span style={{ fontSize: 14, color: '#ddd' }}>{label}</span>
+          <Icon name={icon} size={14} color="#444" />
+          <span style={{ fontSize: 13, color: '#ccc' }}>{label}</span>
         </div>
-        <span style={{ fontSize: 14, color: '#aaa' }}>{value} {unit}</span>
+        <span style={{ fontSize: 13, color: '#888' }}>{value} {unit}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => setValue(Number(e.target.value))}
@@ -144,13 +134,16 @@ function SliderRow({ icon, label, value, setValue, min, max, step, unit }: {
   );
 }
 
-function DashHeader() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Icon name="server" width={28} height={28} color="#6366f1" />
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>Proxmox Console</h1>
-      </div>
-    </div>
-  );
-}
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 500,
+  padding: '10px 20px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+};

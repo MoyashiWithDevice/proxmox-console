@@ -27,47 +27,42 @@ export function ServerInfo() {
   }
 
   if (!settings) {
-    return <Layout><div style={{ color: '#888', fontSize: 14 }}>Loading...</div></Layout>;
+    return <Layout><div style={{ color: '#555', fontSize: 13 }}>Loading...</div></Layout>;
   }
 
   return (
     <Layout>
-      <DashHeader />
-      <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: 32 }}>
+      <div style={{ flex: 1, maxWidth: 800, margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon name="server" />
-            <div style={{ fontSize: 18, fontWeight: 600 }}>Server Info</div>
+            <Icon name="server" size={18} color="#fff" />
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Server Info</div>
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#777', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>OS</div>
-          <select value={os} onChange={(e) => setOs(e.target.value)} style={selectStyle}>
+          <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>OS</div>
+          <select value={os} onChange={(e) => setOs(e.target.value)} style={inputStyle}>
             {(settings.os || []).map((o) => (
               <option key={o.id} value={o.id}>{o.label}</option>
             ))}
           </select>
         </div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#777', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Hostname</div>
-          <input type="text" value={hostname} onChange={(e) => setHostname(e.target.value)} style={selectStyle as React.CSSProperties} />
+          <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Hostname</div>
+          <input type="text" value={hostname} onChange={(e) => setHostname(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 11, color: '#777', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>SSH Port</div>
-          <input type="text" value={sshPort} onChange={(e) => setSshPort(e.target.value)} style={selectStyle as React.CSSProperties} />
+          <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>SSH Port</div>
+          <input type="text" value={sshPort} onChange={(e) => setSshPort(e.target.value)} style={inputStyle} />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={handleNext}
-            style={{
-              background: '#2563eb', color: '#fff', border: 'none',
-              padding: '12px 24px', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
+            style={ghostBtn}
           >
-            Next <Icon name="arrowRight" />
+            Next <Icon name="arrowRight" size={12} />
           </button>
         </div>
       </div>
@@ -75,24 +70,27 @@ export function ServerInfo() {
   );
 }
 
-function DashHeader() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Icon name="server" width={28} height={28} color="#6366f1" />
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>Proxmox Console</h1>
-      </div>
-    </div>
-  );
-}
-
-const selectStyle: React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: '#0d0d0d',
-  border: '1px solid #222',
+  background: '#000',
+  border: '1px solid #111',
   color: '#fff',
   fontSize: 14,
   padding: '10px 12px',
-  borderRadius: 8,
+  borderRadius: 4,
   outline: 'none',
+};
+
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 500,
+  padding: '10px 20px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
 };

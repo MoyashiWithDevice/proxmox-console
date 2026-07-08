@@ -48,18 +48,18 @@ export function Support() {
     <div style={{ minHeight: '100vh', background: '#000', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #111' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Icon name="logOut" />
-          <div style={{ fontSize: 16, fontWeight: 600 }}>Contact Admin</div>
+          <Icon name="logOut" size={16} color="#fff" />
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>Contact Admin</div>
         </div>
         <button
           onClick={() => navigate('/')}
-          style={{ background: 'transparent', border: '1px solid #444', borderRadius: 8, color: '#fff', padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={ghostBtn}
         >
-          <Icon name="arrowLeft" /> Back
+          <Icon name="arrowLeft" size={12} /> Back
         </button>
       </div>
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-        <div style={{ width: '100%', maxWidth: 640, background: '#111', border: '1px solid #1a1a1a', borderRadius: 16, padding: 28 }}>
+        <div style={{ width: '100%', maxWidth: 640, border: '1px solid #111', padding: 28 }}>
           <Field label="Subject">
             <input
               type="text"
@@ -91,15 +91,12 @@ export function Support() {
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              style={{
-                padding: '12px 20px', background: submitting ? '#334155' : '#2563eb', color: '#fff',
-                borderRadius: 10, cursor: submitting ? 'default' : 'pointer', fontSize: 14, border: 'none',
-              }}
+              style={{ ...ghostBtn, padding: '10px 18px', color: submitting ? '#555' : '#fff' }}
             >
               {submitting ? 'Submitting...' : 'Submit'}
             </button>
             {status && (
-              <div style={{ fontSize: 14, color: status.type === 'success' ? '#22c55e' : '#f43f5e' }}>
+              <div style={{ fontSize: 13, color: status.type === 'success' ? '#22c55e' : '#f43f5e' }}>
                 {status.msg}
               </div>
             )}
@@ -113,7 +110,7 @@ export function Support() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 11, color: '#777', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, color: '#555', marginBottom: 8, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</div>
       {children}
     </div>
   );
@@ -121,11 +118,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: '#0d0d0d',
-  border: '1px solid #222',
+  background: '#000',
+  border: '1px solid #111',
   color: '#fff',
-  fontSize: 16,
+  fontSize: 14,
   padding: '10px 12px',
-  borderRadius: 8,
+  borderRadius: 4,
   outline: 'none',
+};
+
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  padding: '8px 14px',
 };

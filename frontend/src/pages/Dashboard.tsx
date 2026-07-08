@@ -2,12 +2,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchVMs, fetchSettings } from '../lib/api';
 import { Icon } from '../components/Icon';
-import { StatusBadge } from '../components/StatusBadge';
+import { Badge } from '../components/Badge';
+import { StatCard } from '../components/StatCard';
 import type { VMResponse, SettingsResponse } from '../types';
 
 export function Dashboard() {
   const [items, setItems] = useState<VMResponse[]>([]);
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const loadVMs = useCallback(() => {
@@ -47,111 +49,86 @@ export function Dashboard() {
     } catch {}
   }
 
+  const th: React.CSSProperties = {
+    padding: '10px 16px', fontSize: 11, color: '#333', fontWeight: 500,
+    textAlign: 'left', borderBottom: '1px solid #111',
+    textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap',
+  };
+
+  const td: React.CSSProperties = {
+    padding: '14px 16px', fontSize: 13, color: '#ccc',
+    borderBottom: '1px solid #0d0d0d', whiteSpace: 'nowrap',
+  };
+
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0f', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1, padding: 32 }}>
+    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, margin: '0 80px', background: '#000', padding: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Icon name="server" width={28} height={28} color="#6366f1" />
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>Proxmox Console</h1>
+            <Icon name="server" size={22} color="#fff" />
+            <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', color: '#fff' }}>Proxmox Console</h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button
               onClick={() => { window.location.href = '/logout'; }}
-              style={{
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                color: '#fff', padding: '8px 16px', borderRadius: 6, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
-              }}
+              style={ghostBtn}
             >
-              <Icon name="logOut" /> Log Out
+              <Icon name="logOut" size={12} /> Log Out
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 16, marginBottom: 32 }}>
-          <StatCard
-            icon="server"
-            label="VMs"
-            used={totalVMs}
-            total={totalVMs > 0 ? totalVMs : 1}
-            unit=""
-            showPct={false}
-          />
-          <StatCard
-            icon="cpu"
-            label="CPU"
-            used={totalCores}
-            total={maxCores}
-            unit="Cores"
-          />
-          <StatCard
-            icon="memoryStick"
-            label="Memory"
-            used={totalMem}
-            total={maxMem}
-            unit="GB"
-          />
-          <StatCard
-            icon="hardDrive"
-            label="Disk"
-            used={totalDisk}
-            total={maxDisk}
-            unit="GB"
-          />
+        <div style={{ display: 'flex', gap: 0, border: '1px solid #111', marginBottom: 32, flexWrap: 'wrap' }}>
+          <StatCard iconName="server" label="VMs" used={totalVMs} total={Math.max(1, totalVMs)} unit="" />
+          <StatCard iconName="cpu" label="CPU" used={totalCores} total={maxCores} unit="Cores" />
+          <StatCard iconName="memoryStick" label="Memory" used={totalMem} total={maxMem} unit="GB" />
+          <StatCard iconName="hardDrive" label="Disk" used={totalDisk} total={maxDisk} unit="GB" />
         </div>
 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Icon name="layers" />
-              <h2 style={{ fontSize: 16, fontWeight: 600 }}>Virtual Machines</h2>
+              <Icon name="layers" size={14} color="#333" />
+              <h2 style={{ fontSize: 13, color: '#555' }}>
+                {vmItems.filter(v => v.Status === 'running').length} running ·{' '}
+                {vmItems.filter(v => v.Status === 'stopped').length} stopped ·{' '}
+                {vmItems.length} total
+              </h2>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => navigate('/info')}
-                style={{
-                  background: '#22c55e', border: 'none',
-                  color: '#fff', padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500,
-                }}
+                style={{ ...ghostBtn, padding: '6px 14px', fontSize: 12 }}
               >
-                <Icon name="plus" /> Create VM
+                <Icon name="plus" size={11} /> Create VM
               </button>
               <button
                 onClick={loadVMs}
-                style={{
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#fff', padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
-                }}
+                style={{ ...ghostBtn, padding: '6px 14px', fontSize: 12 }}
               >
-                <Icon name="refresh" /> Refresh
+                <Icon name="refresh" size={11} /> Refresh
               </button>
             </div>
           </div>
 
-          <table className="vm-table" style={{
-            width: '100%', borderCollapse: 'collapse', background: '#111',
-            border: '1px solid #1a1a1a', borderRadius: 12, overflow: 'hidden',
-          }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1a1a1a' }}>
-                <Th>Type</Th>
-                <Th>ID</Th>
-                <Th>Name</Th>
-                <Th>Status</Th>
-                <Th>IP</Th>
-                <Th>CPU</Th>
-                <Th>Memory</Th>
-                <Th>Disk</Th>
-                <Th>Actions</Th>
+              <tr>
+                <th style={th}>Type</th>
+                <th style={th}>ID</th>
+                <th style={th}>Name</th>
+                <th style={th}>Status</th>
+                <th style={th}>IP</th>
+                <th style={th}>CPU</th>
+                <th style={th}>Memory</th>
+                <th style={th}>Disk</th>
+                <th style={th}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {vmItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#555', fontSize: 14 }}>
+                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#555', fontSize: 13 }}>
                     No virtual machines found.
                   </td>
                 </tr>
@@ -164,42 +141,45 @@ export function Dashboard() {
                   const cores = vm.Cores || vm.CPU || 0;
                   const mem = vm.Memory || 0;
                   const hdd = vm.HDD || vm.Hdd || 0;
+                  const isHover = hovered === vmid;
 
                   return (
                     <tr
                       key={vmid}
-                      style={{ borderBottom: '1px solid #1a1a1a', cursor: 'pointer' }}
+                      style={{ background: isHover ? '#080808' : 'transparent', cursor: 'pointer' }}
+                      onMouseEnter={() => setHovered(vmid!)}
+                      onMouseLeave={() => setHovered(null)}
                       onDoubleClick={() => navigate(`/vm?vmid=${vmid}`)}
                     >
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#888' }}>
-                        <Icon name="package" />
+                      <td style={{ ...td, color: '#444', width: 40 }}>
+                        <Icon name="package" size={13} color="#444" />
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#ddd' }}>
-                        <a href={`/vm?vmid=${vmid}`} style={{ color: '#888', textDecoration: 'none', fontFamily: 'monospace' }}>
+                      <td style={{ ...td, color: '#2a2a2a', fontFamily: 'monospace' }}>
+                        <a href={`/vm?vmid=${vmid}`} style={{ color: '#2a2a2a', textDecoration: 'none' }}>
                           {vmid}
                         </a>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#ddd', fontWeight: 500 }}>
+                      <td style={{ ...td, color: '#fff' }}>
                         <a href={`/vm?vmid=${vmid}`} style={{ color: '#fff', textDecoration: 'none' }}>
                           {name}
                         </a>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
-                        <StatusBadge status={status} />
+                      <td style={td}>
+                        <Badge status={status} />
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#777', fontFamily: 'monospace' }}>
+                      <td style={{ ...td, color: '#555', fontFamily: 'monospace' }}>
                         {ip}
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#aaa' }}>{cores}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#aaa' }}>{mem} GB</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#aaa' }}>{hdd} GB</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                      <td style={{ ...td, color: '#888' }}>{cores}</td>
+                      <td style={{ ...td, color: '#888' }}>{mem} GB</td>
+                      <td style={{ ...td, color: '#888' }}>{hdd} GB</td>
+                      <td style={{ ...td, color: '#ccc' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {status !== 'running' && (
-                            <ActionBtn label="Start" color="#22c55e" onClick={() => vmAction(vmid, 'put')} />
+                            <ActionBtn label="Start" onClick={() => vmAction(vmid, 'put')} />
                           )}
                           {status === 'running' && (
-                            <ActionBtn label="Stop" color="#f43f5e" onClick={() => vmAction(vmid, 'delete')} />
+                            <ActionBtn label="Stop" onClick={() => vmAction(vmid, 'delete')} />
                           )}
                         </div>
                       </td>
@@ -215,68 +195,24 @@ export function Dashboard() {
   );
 }
 
-function StatCard({
-  icon, label, used, total, unit, showPct = true,
-}: {
-  icon: 'server' | 'cpu' | 'memoryStick' | 'hardDrive';
-  label: string;
-  used: number;
-  total: number;
-  unit: string;
-  showPct?: boolean;
-}) {
-  const pct = total === 0 ? 0 : Math.round((used / total) * 100);
-  const barColor = pct > 85 ? '#f43f5e' : pct > 65 ? '#f59e0b' : '#fff';
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  padding: '8px 16px',
+};
 
-  return (
-    <div style={{ flex: 1, minWidth: 140, padding: '20px 24px', border: '1px solid #111' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <Icon name={icon} width={14} height={14} color="#444" />
-        <span style={{ fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          {label}
-        </span>
-      </div>
-      {showPct ? (
-        <>
-          <div style={{ fontSize: 28, fontWeight: 300, color: '#fff', marginBottom: 12, lineHeight: 1 }}>
-            {pct}<span style={{ fontSize: 14, color: '#444' }}>%</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 3, background: '#1e1e1e', borderRadius: 2 }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 2 }} />
-            </div>
-            <span style={{ fontSize: 11, color: '#555', minWidth: 28, textAlign: 'right' }}>{pct}%</span>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: '#333' }}>
-            {used} / {total} {unit}
-          </div>
-        </>
-      ) : (
-        <div style={{ fontSize: 28, fontWeight: 300, color: '#fff', lineHeight: 1 }}>{used}</div>
-      )}
-    </div>
-  );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th style={{
-      padding: '12px 16px', textAlign: 'left', fontSize: 11, color: '#777',
-      textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500,
-    }}>
-      {children}
-    </th>
-  );
-}
-
-function ActionBtn({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+function ActionBtn({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      style={{
-        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-        color, padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 11,
-      }}
+      style={ghostBtn}
     >
       {label}
     </button>

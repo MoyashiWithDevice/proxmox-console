@@ -16,3 +16,19 @@ variable "runcmd" {
 variable "iso_volume_id" {
   default = ""
 }
+
+variable "vlan_id" {
+  default = 0
+}
+
+variable "vm_ip" {
+  default = ""
+}
+
+variable "vm_gateway" {
+  default = ""
+}
+
+variable "vm_netmask" {
+  default = "24"
+}

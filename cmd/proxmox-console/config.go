@@ -38,10 +38,16 @@ type AgentConfig struct {
 	PublicKey string `json:"-"`
 }
 
+type VLANConfig struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
+}
+
 type SettingsConfig struct {
 	Resources ResourceConstraints `json:"resources"`
 	OS        []OSOption          `json:"os"`
 	Agent     AgentConfig         `json:"agent"`
+	VLAN      VLANConfig          `json:"vlan"`
 }
 
 type Config struct {
@@ -117,6 +123,10 @@ func loadSettingsConfig() {
 		},
 		Agent: AgentConfig{
 			User: "agent",
+		},
+		VLAN: VLANConfig{
+			Min: 100,
+			Max: 500,
 		},
 	}
 

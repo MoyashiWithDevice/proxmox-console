@@ -1,4 +1,6 @@
-export interface VMResponse {
+export type StatusType = 'running' | 'stopped' | 'paused';
+
+export interface VM {
   type: 'vm' | 'job';
   VMID?: number;
   CPU?: number;
@@ -29,7 +31,7 @@ export interface VMRequest {
   servername?: string;
   os?: string;
   hostname?: string;
-  sshport?: string;
+  username?: string;
 }
 
 export interface SettingsResponse {
@@ -73,3 +75,25 @@ export interface KratosFlow {
     messages: { text: string }[];
   };
 }
+
+export const statusColors: Record<string, { dot: string; color: string }> = {
+  running: { dot: '#22c55e', color: '#22c55e' },
+  done: { dot: '#22c55e', color: '#22c55e' },
+  stopped: { dot: '#f43f5e', color: '#f43f5e' },
+  error: { dot: '#f43f5e', color: '#f43f5e' },
+  paused: { dot: '#f59e0b', color: '#f59e0b' },
+  installing: { dot: '#f59e0b', color: '#f59e0b' },
+  'running(init)': { dot: '#f59e0b', color: '#f59e0b' },
+  'running(apply)': { dot: '#f59e0b', color: '#f59e0b' },
+  'running(modify)': { dot: '#f59e0b', color: '#f59e0b' },
+  modified: { dot: '#f59e0b', color: '#f59e0b' },
+  unknown: { dot: '#555', color: '#555' },
+};
+
+export const statusLabels: Record<string, string> = {
+  running: 'Running',
+  stopped: 'Stopped',
+  error: 'Error',
+  paused: 'Paused',
+  installing: 'Installing',
+};

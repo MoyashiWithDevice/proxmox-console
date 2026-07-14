@@ -1,21 +1,45 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { changeVMState, updateVM, downloadKey, fetchVMs, STATUS_COLORS } from '../lib/api';
+import { changeVMState, updateVM, downloadKey } from '../api';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
-import { StatusDot } from '../components/StatusBadge';
-import type { VMResponse } from '../types';
+import { useVM } from '../context/VMContext';
+import type { VM } from '../types';
+
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #111',
+  borderRadius: 4,
+  color: '#444',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 500,
+  padding: '8px 14px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#000',
+  border: '1px solid #111',
+  color: '#fff',
+  fontSize: 14,
+  padding: '10px 12px',
+  borderRadius: 4,
+  outline: 'none',
+};
 
 export function VMDetail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const id = searchParams.get('vmid');
   const jobId = searchParams.get('job_id');
+  const { vms, jobs, reload } = useVM();
   const isJobView = Boolean(jobId);
 
-  const [items, setItems] = useState<VMResponse[]>([]);
-  const [vm, setVM] = useState<VMResponse | null>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [vm, setVM] = useState<VM | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -23,49 +47,41 @@ export function VMDetail() {
   const [cores, setCores] = useState(0);
   const [mem, setMem] = useState(0);
   const [hdd, setHdd] = useState(0);
-  const [jobStatus, setJobStatus] = useState('\u2014');
   const [jobLog, setJobLog] = useState('');
   const [jobVMID, setJobVMID] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(10);
   const logRef = useRef<HTMLDivElement>(null);
 
-  const loadItems = useCallback(() => {
-    fetchVMs().then((data) => {
-      setItems(data || []);
-      if (id) {
-        const match = (data || []).find((v) => String(v.VMID || v.vmid) === id);
-        if (match) {
-          setVM(match);
-          if (!editing) {
-            setName(match.Name || '');
-            setCores(match.Cores || match.CPU || 0);
-            setMem(match.Memory || 0);
-            setHdd(match.HDD || match.Hdd || 0);
-          }
-        }
-      }
-      if (jobId) {
-        const jobMatch = (data || []).find((v) => v.JOBID === jobId || v.job_id === jobId);
-        if (jobMatch) {
-          setJobStatus(jobMatch.Status || jobMatch.status || '\u2014');
-          setJobLog(jobMatch.log || '');
-          if (jobMatch.VMID || jobMatch.vmid) {
-            setJobVMID(jobMatch.VMID || jobMatch.vmid || null);
-            if (!id) setVM(jobMatch);
-          }
-        }
-      }
-    }).catch(() => {});
-  }, [id, jobId, editing]);
+  const findJob = useCallback(() => {
+    if (!jobId) return null;
+    return jobs.find((j) => j.id === jobId || j.JOBID === jobId || j.job_id === jobId) || null;
+  }, [jobId, jobs]);
 
   useEffect(() => {
-    loadItems();
-    const interval = setInterval(loadItems, 10000);
-    return () => clearInterval(interval);
-  }, [loadItems]);
+    if (id) {
+      const match = vms.find((v) => String(v.VMID || v.vmid) === id) || null;
+      setVM(match);
+      if (match && !editing) {
+        setName(match.Name || '');
+        setCores(match.Cores || match.CPU || 0);
+        setMem(match.Memory || 0);
+        setHdd(match.HDD || match.Hdd || 0);
+      }
+    }
+    if (jobId) {
+      const job = findJob();
+      if (job) {
+        setJobLog(job.log || '');
+        if (job.VMID || job.vmid) {
+          setJobVMID(job.VMID || job.vmid || null);
+          if (!id) setVM(job);
+        }
+      }
+    }
+  }, [id, jobId, vms, editing, findJob]);
 
   useEffect(() => {
-    if (!jobId || !jobVMID || jobStatus !== 'done') return;
+    if (!jobId || !jobVMID || (vm && vm.Status !== 'done')) return;
     const interval = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
@@ -77,7 +93,7 @@ export function VMDetail() {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [jobId, jobVMID, jobStatus, navigate]);
+  }, [jobId, jobVMID, vm, navigate]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -93,6 +109,7 @@ export function VMDetail() {
         const updated = { ...vm, Status: action === 'start' ? 'running' : 'stopped', status: action === 'start' ? 'running' : 'stopped' };
         setVM(updated);
       }
+      reload();
     } catch (err: unknown) {
       alert('Failed: ' + (err as Error).message);
     }
@@ -121,7 +138,8 @@ export function VMDetail() {
     try {
       const data = await updateVM(patch as { vmid: number; name?: string; cores?: number; memory?: number; hdd?: number });
       if (data.job_id) {
-        setJobStatus('running(modify)');
+        setSaving(false);
+        setEditing(false);
       } else {
         setSaving(false);
         setEditing(false);
@@ -168,274 +186,156 @@ export function VMDetail() {
     }
   }
 
-  const vmItems = items.filter((i) => i.type === 'vm');
-  const jobItems = items.filter((i) => i.type === 'job');
-  const target = id || (jobVMID ? String(jobVMID) : '');
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 24px', height: 52, borderBottom: '1px solid #111', flexShrink: 0, background: '#000' }}>
-        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160, textDecoration: 'none' }}>
-          <Icon name="server" size={16} color="#fff" />
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>Proxmox Console</span>
-          <span style={{ fontSize: 11, color: '#333', marginLeft: 2 }}>v1.0</span>
-        </a>
-        <div style={{ flex: 1, maxWidth: 320, position: 'relative' }}>
-          <Icon name="search" size={12} color="#333" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text" placeholder="Search…" aria-label="Search"
-            style={{
-              width: '100%', background: '#000', border: '1px solid #111',
-              borderRadius: 4, padding: '6px 10px 6px 28px',
-              color: '#fff', fontSize: 12, outline: 'none',
-            }}
+  if (isJobView) {
+    const job = findJob();
+    const js = job?.Status || job?.status || '\u2014';
+    return (
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', marginBottom: 6, color: '#fff' }}>VM Creation</h1>
+        <p style={{ fontSize: 12, color: '#333', marginBottom: 32 }}>Track your VM creation progress</p>
+        <div style={{ background: '#000', border: '1px solid #111', padding: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <span style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
+            <Badge status={js} />
+          </div>
+          <div
+            ref={logRef}
+            style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
+            dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
           />
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 20 }}>
-          <button aria-label="Notifications" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <Icon name="bell" size={15} color="#333" />
-          </button>
-          <span style={{ fontSize: 12, color: '#444' }}>admin</span>
-          <button
-            onClick={() => navigate(`/support${target ? `?vmid=${target}` : ''}`)}
-            style={{ background: 'none', border: '1px solid #111', cursor: 'pointer', padding: '6px 12px', borderRadius: 4, color: '#444', fontSize: 12 }}
-          >
-            Support
-          </button>
-          <button
-            onClick={() => { window.location.href = '/logout'; }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#444', fontSize: 12 }}
-          >
-            <Icon name="logOut" size={12} /> Logout
-          </button>
+          {jobVMID && js === 'done' && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
+                VM created successfully. Redirecting in {countdown} seconds...
+              </div>
+              <div style={{ width: '100%', height: 2, background: '#111' }}>
+                <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%` }} />
+              </div>
+            </div>
+          )}
         </div>
       </div>
+    );
+  }
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', background: '#000' }}>
-        {/* Sidebar */}
-        <div style={{ width: 210, minWidth: 210, borderRight: '1px solid #111', overflowY: 'auto', flexShrink: 0, paddingTop: 8, paddingBottom: 8, background: '#000' }}>
-          <div
-            onClick={() => navigate('/')}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px 10px', cursor: 'pointer', fontSize: 12, color: '#333', borderBottom: '1px solid #0d0d0d', marginBottom: 8, fontWeight: 500 }}
+  if (!id) {
+    return <div style={{ color: '#555', fontSize: 13 }}>Select a VM from the sidebar to view details</div>;
+  }
+
+  if (!vm) {
+    return <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>;
+  }
+
+  const status = (vm.Status || vm.status || 'stopped').toLowerCase();
+
+  return (
+    <div style={{ maxWidth: 800 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 28, alignItems: 'center' }}>
+        <button
+          onClick={() => window.open(`/terminal?vmid=${vm.VMID}`, '_blank', 'noopener,noreferrer')}
+          style={ghostBtn}
+        >
+          <Icon name="terminal" size={12} color="#444" /> Terminal
+        </button>
+        {!editing && (
+          <button
+            onClick={() => handleToggleVM(vm.VMID!, status === 'running' ? 'stop' : 'start')}
+            style={ghostBtn}
           >
-            <Icon name="arrowLeft" size={12} /> Dashboard
-          </div>
-          <div style={{ padding: '4px 18px', fontSize: 10, color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
-            Virtual Machines
-          </div>
-          <div>
-            {vmItems.length === 0 ? (
-              <div style={{ padding: '6px 16px', fontSize: 12, color: '#333' }}>None</div>
-            ) : (
-              vmItems.map((v) => {
-                const isActive = String(v.VMID) === String(id);
-                const isHover = hovered === `vm-${v.VMID}`;
-                const vmStatus = v.Status || v.status || 'unknown';
-                const color = isActive ? '#fff' : isHover ? '#aaa' : '#555';
-                const bg = isActive ? '#111' : 'transparent';
-                const borderL = isActive ? '2px solid #fff' : '2px solid transparent';
-                return (
-                  <div
-                    key={v.VMID}
-                    onMouseEnter={() => setHovered(`vm-${v.VMID}`)}
-                    onMouseLeave={() => setHovered(null)}
-                    onClick={() => navigate(`/vm?vmid=${v.VMID}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color, background: bg, borderLeft: borderL, userSelect: 'none' }}
-                  >
-                    <StatusDot status={vmStatus} />
-                    <Icon name="monitor" size={13} color={color} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {v.Name || 'Unnamed'}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
+            {status === 'running' ? 'Stop' : 'Start'}
+          </button>
+        )}
+      </div>
 
-          {jobItems.length > 0 && (
-            <>
-              <div style={{ padding: '8px 18px 4px', fontSize: 10, color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginTop: 14 }}>
-                Creating
-              </div>
-              {jobItems.map((j) => {
-                const jid = j.JOBID || j.job_id || j.id || '';
-                const isActiveJob = String(jid) === String(id);
-                const isHoverJob = hovered === `job-${jid}`;
-                const js = STATUS_COLORS[j.Status || j.status || ''] || STATUS_COLORS.unknown;
-                const jcolor = isActiveJob ? '#fff' : isHoverJob ? '#aaa' : '#888';
-                return (
-                  <div
-                    key={jid}
-                    onMouseEnter={() => setHovered(`job-${jid}`)}
-                    onMouseLeave={() => setHovered(null)}
-                    onClick={() => navigate(`/vm?job_id=${jid}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', cursor: 'pointer', fontSize: 13, color: jcolor, background: isActiveJob ? '#111' : 'transparent', borderLeft: isActiveJob ? '2px solid #fff' : '2px solid transparent', userSelect: 'none' }}
-                  >
-                    <StatusDot status={j.Status || j.status || ''} />
-                    <Icon name="monitor" size={13} color={js} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {j.Servername || j.servername || ''} (creating)
-                    </span>
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-
-        {/* Main Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', background: '#000' }}>
-          {isJobView ? (
+      <div style={{ background: '#000', border: '1px solid #111', padding: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid #111' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 32 }}>
+              <FieldLabel label="VMID" value={String(vm.VMID)} mono />
+              <FieldLabel label="IP Address" value={vm.IP || '\u2014'} mono />
+            </div>
+          </div>
+          {editing ? (
             <div>
-              <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', marginBottom: 6, color: '#fff' }}>VM Creation</h1>
-              <p style={{ fontSize: 12, color: '#333', marginBottom: 32 }}>Track your VM creation progress</p>
-              <div style={{ background: '#000', border: '1px solid #111', padding: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                  <span style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
-                  <Badge status={jobStatus} />
-                </div>
-                <div
-                  ref={logRef}
-                  style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
-                  dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
-                />
-                {jobVMID && jobStatus === 'done' && (
-                  <div style={{ marginTop: 20 }}>
-                    <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
-                      VM created successfully. Redirecting in {countdown} seconds...
-                    </div>
-                    <div style={{ width: '100%', height: 2, background: '#111' }}>
-                      <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%` }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button onClick={() => { setEditing(false); if (vm) { setName(vm.Name || ''); setCores(vm.Cores || vm.CPU || 0); setMem(vm.Memory || 0); setHdd(vm.HDD || vm.Hdd || 0); } }}
+                style={{ marginRight: 8, ...ghostBtn }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                style={{ ...ghostBtn, color: saving ? '#555' : '#fff' }}>
+                {saving ? 'Saving...' : 'Save'}
+              </button>
             </div>
-          ) : !id ? (
-            <div style={{ color: '#555', fontSize: 13 }}>Select a VM from the list to view details</div>
-          ) : !vm ? (
-            <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>
           ) : (
-            <div style={{ maxWidth: 800 }}>
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: 10, marginBottom: 28, alignItems: 'center' }}>
-                <button
-                  onClick={() => window.open(`/terminal?vmid=${vm.VMID}`, '_blank', 'noopener,noreferrer')}
-                  style={ghostBtn}
-                >
-                  <Icon name="terminal" size={12} color="#444" /> Terminal
-                </button>
-                {!editing && (
-                  <button
-                    onClick={() => handleToggleVM(vm.VMID!, (vm.Status || 'stopped') === 'running' ? 'stop' : 'start')}
-                    style={ghostBtn}
-                  >
-                    {(vm.Status || 'stopped') === 'running' ? 'Stop' : 'Start'}
-                  </button>
-                )}
-              </div>
-
-              {/* VM Info Card */}
-              <div style={{ background: '#000', border: '1px solid #111', padding: 24, marginBottom: 24 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, paddingBottom: 20, borderBottom: '1px solid #111' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', gap: 32 }}>
-                      <FieldLabel label="VMID" value={String(vm.VMID)} mono />
-                      <FieldLabel label="IP Address" value={vm.IP || '\u2014'} mono />
-                    </div>
-                  </div>
-                  {editing ? (
-                    <div>
-                      <button onClick={() => { setEditing(false); if (vm) { setName(vm.Name || ''); setCores(vm.Cores || vm.CPU || 0); setMem(vm.Memory || 0); setHdd(vm.HDD || vm.Hdd || 0); } }}
-                        style={{ marginRight: 8, ...ghostBtn }}>
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        style={{ ...ghostBtn, color: saving ? '#555' : '#fff' }}>
-                        {saving ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <button
-                        onClick={() => setEditing(true)}
-                        style={ghostBtn}>
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                  <EditField label="Name">
-                    {editing ? (
-                      <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
-                    ) : (
-                      <ViewValue value={name || '\u2014'} />
-                    )}
-                  </EditField>
-                  <EditField label="CPU Cores">
-                    {editing ? (
-                      <input type="number" value={cores} onChange={(e) => setCores(Number(e.target.value))} style={inputStyle} />
-                    ) : (
-                      <ViewValue value={String(cores)} />
-                    )}
-                  </EditField>
-                  <EditField label="Memory (MB)">
-                    {editing ? (
-                      <input type="number" value={mem} onChange={(e) => setMem(Number(e.target.value))} style={inputStyle} />
-                    ) : (
-                      <ViewValue value={String(mem)} />
-                    )}
-                  </EditField>
-                  <EditField label="Storage (GB)">
-                    {editing ? (
-                      <input type="number" value={hdd} onChange={(e) => setHdd(Number(e.target.value))} style={inputStyle} />
-                    ) : (
-                      <ViewValue value={String(hdd)} />
-                    )}
-                  </EditField>
-                </div>
-
-                {!editing && (
-                  <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #111' }}>
-                    <button
-                      onClick={handleDownloadKey}
-                      style={{ ...ghostBtn, padding: '8px 12px' }}>
-                      <Icon name="download" size={12} color="#444" /> Download Private Key
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Danger Zone */}
-              {!editing && (
-                <div style={{ border: '1px solid #f43f5e', padding: 24 }}>
-                  <h3 style={{ fontSize: 13, fontWeight: 600, color: '#f43f5e', marginBottom: 8 }}>Danger Zone</h3>
-                  <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>This action cannot be undone. The virtual machine will be permanently deleted.</p>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    style={{ padding: '8px 14px', border: '1px solid #f43f5e', borderRadius: 4, background: 'transparent', color: '#f43f5e', cursor: deleting ? 'default' : 'pointer', fontSize: 12, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: deleting ? 0.5 : 1 }}>
-                    <Icon name="trash" size={12} color="#f43f5e" /> {deleting ? 'Deleting...' : 'Delete VM'}
-                  </button>
-                </div>
-              )}
-
-              {/* Support link */}
-              <div style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid #111' }}>
-                <p style={{ fontSize: 12, color: '#555' }}>
-                  <a href={`/support?vmid=${target}`} style={{ color: '#555', textDecoration: 'none' }}>
-                    Need help? Contact support →
-                  </a>
-                </p>
-              </div>
+            <div>
+              <button onClick={() => setEditing(true)} style={ghostBtn}>
+                Edit
+              </button>
             </div>
           )}
         </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <EditField label="Name">
+            {editing ? (
+              <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+            ) : (
+              <ViewValue value={name || '\u2014'} />
+            )}
+          </EditField>
+          <EditField label="CPU Cores">
+            {editing ? (
+              <input type="number" value={cores} onChange={(e) => setCores(Number(e.target.value))} style={inputStyle} />
+            ) : (
+              <ViewValue value={String(cores)} />
+            )}
+          </EditField>
+          <EditField label="Memory (MB)">
+            {editing ? (
+              <input type="number" value={mem} onChange={(e) => setMem(Number(e.target.value))} style={inputStyle} />
+            ) : (
+              <ViewValue value={String(mem)} />
+            )}
+          </EditField>
+          <EditField label="Storage (GB)">
+            {editing ? (
+              <input type="number" value={hdd} onChange={(e) => setHdd(Number(e.target.value))} style={inputStyle} />
+            ) : (
+              <ViewValue value={String(hdd)} />
+            )}
+          </EditField>
+        </div>
+
+        {!editing && (
+          <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #111' }}>
+            <button onClick={handleDownloadKey} style={{ ...ghostBtn, padding: '8px 12px' }}>
+              <Icon name="download" size={12} color="#444" /> Download Private Key
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!editing && (
+        <div style={{ border: '1px solid #f43f5e', padding: 24 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#f43f5e', marginBottom: 8 }}>Danger Zone</h3>
+          <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>This action cannot be undone. The virtual machine will be permanently deleted.</p>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{ padding: '8px 14px', border: '1px solid #f43f5e', borderRadius: 4, background: 'transparent', color: '#f43f5e', cursor: deleting ? 'default' : 'pointer', fontSize: 12, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: deleting ? 0.5 : 1 }}>
+            <Icon name="trash" size={12} color="#f43f5e" /> {deleting ? 'Deleting...' : 'Delete VM'}
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid #111' }}>
+        <p style={{ fontSize: 12, color: '#555' }}>
+          <a href={`/support?vmid=${vm.VMID}`} style={{ color: '#555', textDecoration: 'none' }}>
+            Need help? Contact support →
+          </a>
+        </p>
       </div>
     </div>
   );
@@ -467,32 +367,6 @@ function ViewValue({ value }: { value: string }) {
   );
 }
 
-const ghostBtn: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid #111',
-  borderRadius: 4,
-  color: '#444',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontWeight: 500,
-  padding: '8px 14px',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: '#000',
-  border: '1px solid #111',
-  color: '#fff',
-  fontSize: 14,
-  padding: '10px 12px',
-  borderRadius: 4,
-  outline: 'none',
-};
-
-/* ===== Terraform log colorizer ===== */
 function colorizeTerraformLog(text: string): string {
   if (typeof text !== 'string') return String(text);
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
+import { AppLayout } from './components/AppLayout';
 import { Dashboard } from './pages/Dashboard';
 import { VMDetail } from './pages/VMDetail';
+import { VMCreate } from './pages/VMCreate';
 import { TerminalPage } from './pages/Terminal';
 import { Support } from './pages/Support';
-import { ResourceSelection } from './pages/ResourceSelection';
-import { ServerInfo } from './pages/ServerInfo';
 import { AuthPage, ErrorAuthPage } from './pages/Auth';
 import { ErrorPage } from './pages/ErrorPage';
 
@@ -17,12 +17,14 @@ export function App() {
         <Route path="/registration" element={<AuthPage isRegistration={true} />} />
         <Route path="/error" element={<ErrorAuthPage />} />
         <Route path="/error-page" element={<ErrorPage />} />
-        <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
-        <Route path="/vm" element={<AuthGuard><VMDetail /></AuthGuard>} />
         <Route path="/terminal" element={<AuthGuard><TerminalPage /></AuthGuard>} />
-        <Route path="/support" element={<AuthGuard><Support /></AuthGuard>} />
-        <Route path="/resource" element={<AuthGuard><ResourceSelection /></AuthGuard>} />
-        <Route path="/info" element={<AuthGuard><ServerInfo /></AuthGuard>} />
+
+        <Route element={<AuthGuard><AppLayout /></AuthGuard>}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/vm" element={<VMDetail />} />
+          <Route path="/vm/create" element={<VMCreate />} />
+          <Route path="/support" element={<Support />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

@@ -21,6 +21,7 @@ type VMResponse struct {
 	OS         string `json:"os,omitempty"`
 	Status     string `json:"status,omitempty"`
 	IP         string `json:"IP,omitempty"`
+	Log        string `json:"log,omitempty"`
 }
 
 type Job struct {
@@ -28,6 +29,7 @@ type Job struct {
 	IP         string
 	VMID       int
 	LogPath    string
+	Log        string
 	Workdir    string
 	NodeName   string
 	Servername string

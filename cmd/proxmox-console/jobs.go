@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/terraform-exec/tfexec"
 )
@@ -34,6 +35,11 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	}
 	if selectedOS == nil {
 		failJob(jobID, "Requested value is invalid【OS】 :", err)
+		return
+	}
+
+	if req.Username == "" {
+		failJob(jobID, "Requested value is invalid【Username】 :", err)
 		return
 	}
 
@@ -81,6 +87,18 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
+
+	logTicker := time.NewTicker(2 * time.Second)
+	defer logTicker.Stop()
+	go func() {
+		for range logTicker.C {
+			b, err := os.ReadFile(job.LogPath)
+			if err == nil {
+				job.Log = string(b)
+				jobs.Store(jobID, job)
+			}
+		}
+	}()
 
 	userPrivkey, userPubkey, err := generateSSHKeyPair()
 	if err != nil {
@@ -181,11 +199,10 @@ EOT
 		failJob(jobID, "Error updating VM status in database:", err)
 		return
 	}
-	// TODO: ログの破棄と/var/lib/vz/snippetsフォルダ内のスニペットファイルの削除
-	if err := os.Remove(job.LogPath); err != nil && !os.IsNotExist(err) {
-		fmt.Println("Error removing log file:", err)
+	// 最終ログをキャプチャ
+	if b, err := os.ReadFile(job.LogPath); err == nil {
+		job.Log = string(b)
 	}
-
 	if job.VMID != 0 {
 		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
 			job.IP = vm.IP

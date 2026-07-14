@@ -1,5 +1,4 @@
 import { useSearchParams } from 'react-router-dom';
-import { PageHeader } from '../components/Layout';
 import { Icon } from '../components/Icon';
 
 export function ErrorPage() {
@@ -15,7 +14,12 @@ export function ErrorPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#fff' }}>
-      <PageHeader />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 24px', height: 52, borderBottom: '1px solid #111', flexShrink: 0, background: '#000' }}>
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160, textDecoration: 'none' }}>
+          <Icon name="server" size={16} color="#fff" />
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>Proxmox Console</span>
+        </a>
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '0 64px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
           <Icon name="alertTriangle" size={18} color="#f43f5e" />
@@ -28,7 +32,7 @@ export function ErrorPage() {
         <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7, maxWidth: 380, textAlign: 'center', marginBottom: 40 }}>{desc}</div>
         <button
           onClick={() => { window.location.href = '/'; }}
-          style={ghostBtn}
+          style={{ background: 'transparent', border: '1px solid #111', borderRadius: 4, color: '#444', cursor: 'pointer', padding: '10px 20px', fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}
         >
           <Icon name="arrowLeft" size={12} /> Return to dashboard
         </button>
@@ -36,17 +40,3 @@ export function ErrorPage() {
     </div>
   );
 }
-
-const ghostBtn: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid #111',
-  borderRadius: 4,
-  color: '#444',
-  cursor: 'pointer',
-  padding: '10px 20px',
-  fontSize: 12,
-  fontWeight: 500,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-};

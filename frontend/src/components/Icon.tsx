@@ -31,6 +31,7 @@ export const iconPaths: Record<string, string> = {
   alertTriangle: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
   alertCircle: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 8v4M12 16h.01',
   check: 'M20 6 9 17l-5-5',
+  x: 'M18 6 6 18M6 6l12 12',
 };
 
 interface IconProps {

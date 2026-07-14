@@ -81,7 +81,7 @@ export function TerminalPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', height: 44, background: '#000', borderBottom: '1px solid #111', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#aaa' }}>Terminal</span>
-          <span style={{ fontSize: 11, color: '#444' }}>{vmid}</span>
+          <span style={{ fontSize: 11, color: '#444' }}>VM {vmid}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button

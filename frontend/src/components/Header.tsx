@@ -1,23 +1,13 @@
 import { Icon } from './Icon';
 
-interface PageHeaderProps {
-  children?: React.ReactNode;
-}
-
-export function PageHeader({ children }: PageHeaderProps) {
+export function Header() {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '0 24px',
-        height: 52,
-        borderBottom: '1px solid #111',
-        flexShrink: 0,
-        background: '#000',
-      }}
-    >
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 16,
+      padding: '0 24px', height: 52,
+      borderBottom: '1px solid #111',
+      flexShrink: 0, background: '#000',
+    }}>
       <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 160, textDecoration: 'none' }}>
         <Icon name="server" size={16} color="#fff" />
         <span style={{ fontSize: 14, fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
@@ -40,36 +30,17 @@ export function PageHeader({ children }: PageHeaderProps) {
         <button aria-label="Notifications" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
           <Icon name="bell" size={15} color="#333" />
         </button>
-        {children}
         <span style={{ fontSize: 12, color: '#444' }}>admin</span>
         <button
           aria-label="Logout"
           onClick={() => { window.location.href = '/logout'; }}
           style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            color: '#444',
-            fontSize: 12,
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            display: 'flex', alignItems: 'center', gap: 6, color: '#444', fontSize: 12,
           }}
         >
           <Icon name="logOut" size={12} /> Logout
         </button>
-      </div>
-    </div>
-  );
-}
-
-export function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ minHeight: '100vh', background: '#000', display: 'flex', flexDirection: 'column' }}>
-      <PageHeader />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px 36px' }}>
-        {children}
       </div>
     </div>
   );

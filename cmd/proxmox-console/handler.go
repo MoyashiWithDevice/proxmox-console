@@ -98,6 +98,7 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 			JOBID:      key.(string),
 			Status:     job.Status,
 			Servername: job.Servername,
+			Log:        job.Log,
 		})
 		return true
 	})

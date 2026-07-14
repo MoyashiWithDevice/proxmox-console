@@ -1,4 +1,4 @@
-import type { VMResponse, VMRequest, SettingsResponse, KratosFlow } from '../types';
+import type { VM, VMRequest, SettingsResponse, KratosFlow } from './types';
 
 export function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   const options: RequestInit = {
@@ -13,11 +13,11 @@ export function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   }) as Promise<T>;
 }
 
-export function fetchVMs(): Promise<VMResponse[]> {
-  return api<VMResponse[]>('/api/vms');
+export function fetchVMs(): Promise<VM[]> {
+  return api<VM[]>('/api/vms');
 }
 
-export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username?: string; runcmd?: string }): Promise<{ job_id: string }> {
+export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string }): Promise<{ job_id: string }> {
   return api('/api/vm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -77,19 +77,6 @@ export function fetchKratosError(id: string): Promise<KratosFlow> {
   });
 }
 
-export function fetchJobs(): Promise<VMResponse[]> {
-  return api<VMResponse[]>('/api/jobs');
+export function fetchJobs(): Promise<VM[]> {
+  return api<VM[]>('/api/jobs');
 }
-
-export const STATUS_COLORS: Record<string, string> = {
-  running: '#22c55e', done: '#22c55e',
-  stopped: '#f43f5e', error: '#f43f5e',
-  installing: '#eab308',
-  'running(init)': '#f59e0b', 'running(apply)': '#f59e0b',
-  'running(modify)': '#f59e0b', modified: '#f59e0b',
-  unknown: '#555',
-};
-
-export const STATUS_LABELS: Record<string, string> = {
-  running: 'Running', stopped: 'Stopped', error: 'Error', installing: 'Installing',
-};

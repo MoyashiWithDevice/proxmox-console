@@ -31,6 +31,7 @@ type ISOInfo struct {
 	Filename  string `json:"filename"`
 	VolumeID  string `json:"volume_id"`
 	Size      int64  `json:"size"`
+	SourceURL string `json:"source_url,omitempty"`
 	CreatedAt string `json:"created_at"`
 }
 

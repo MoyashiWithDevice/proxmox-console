@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -100,6 +101,30 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	defer logFile.Close()
 
 	useISO := req.ISOVolume != ""
+
+	// ISOがURLベースの場合、まだダウンロードされていなければダウンロードする
+	if useISO && req.ISOVolume != "" {
+		iso, err := getISOByVolumeID(req.ISOVolume)
+		if err == nil && iso.SourceURL != "" && iso.VolumeID == "" {
+			job.Status = "running(iso-download)"
+			jobs.Store(jobID, job)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+
+			volumeID, err := downloadISOFromURL(ctx, iso.SourceURL, iso.Filename)
+			if err != nil {
+				failJob(jobID, "Error downloading ISO from URL: %v", err)
+				return
+			}
+
+			if err := updateISOVolumeID(iso.ID, volumeID, 0); err != nil {
+				log.Printf("Warning: failed to update ISO record: %v", err)
+			}
+
+			req.ISOVolume = volumeID
+		}
+	}
 
 	logTicker := time.NewTicker(2 * time.Second)
 	defer logTicker.Stop()

@@ -84,3 +84,20 @@ export function fetchJobs(): Promise<VM[]> {
 export function fetchISOs(): Promise<ISOInfo[]> {
   return api<ISOInfo[]>('/api/isos');
 }
+
+export function uploadISO(file: File): Promise<ISOInfo> {
+  const form = new FormData();
+  form.append('iso', file);
+  return api<ISOInfo>('/api/iso/upload', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export function saveISOUrl(url: string, filename?: string): Promise<ISOInfo> {
+  return api<ISOInfo>('/api/iso/save-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, filename }),
+  });
+}

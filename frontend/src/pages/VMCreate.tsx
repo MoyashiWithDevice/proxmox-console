@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchSettings, createVM, fetchISOs } from '../api';
+import { fetchSettings, createVM, fetchISOs, uploadISO, saveISOUrl } from '../api';
 import { Icon } from '../components/Icon';
 import { StepIndicator } from '../components/StepIndicator';
 import type { SettingsResponse, ISOInfo } from '../types';
@@ -39,6 +39,19 @@ const ghostBtn: React.CSSProperties = {
   gap: 6,
 };
 
+const smallBtn: React.CSSProperties = {
+  ...ghostBtn,
+  padding: '6px 12px',
+  fontSize: 11,
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
 export function VMCreate() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
@@ -55,6 +68,13 @@ export function VMCreate() {
   const [isos, setIsos] = useState<ISOInfo[]>([]);
   const [isoVolume, setIsoVolume] = useState('');
 
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const useISO = isoVolume !== '';
+
   useEffect(() => {
     fetchSettings().then((data) => {
       setSettings(data);
@@ -66,22 +86,76 @@ export function VMCreate() {
     fetchISOs().then((data) => setIsos(data || [])).catch(() => {});
   }, []);
 
+  function getISOValue(iso: ISOInfo): string {
+    return iso.volume_id || `url:${iso.id}`;
+  }
+
+  function getSelectedISO(): ISOInfo | undefined {
+    return isos.find((i) => getISOValue(i) === isoVolume);
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const iso = await uploadISO(file);
+      setIsos((prev) => [iso, ...prev]);
+      setIsoVolume(iso.volume_id);
+    } catch (err) {
+      alert('Upload failed: ' + (err instanceof Error ? err.message : err));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleDownload() {
+    if (!downloadUrl.trim()) return;
+    setDownloading(true);
+    try {
+      const iso = await saveISOUrl(downloadUrl.trim());
+      setIsos((prev) => [iso, ...prev]);
+      setIsoVolume(iso.volume_id || `url:${iso.id}`);
+      setDownloadUrl('');
+    } catch (err) {
+      alert('Failed to save URL: ' + (err instanceof Error ? err.message : err));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleCreate() {
-    if (!os || !hostname || !username) {
-      alert('Please fill in OS, hostname and username');
+    if (!hostname || !username) {
+      alert('Please fill in hostname and username');
       return;
     }
+    if (!useISO && !os) {
+      alert('Please select an OS template');
+      return;
+    }
+
+    let isoVolumeToSend = '';
+    if (useISO) {
+      const selected = getSelectedISO();
+      if (!selected) {
+        alert('Please select a valid ISO');
+        return;
+      }
+      isoVolumeToSend = selected.volume_id || '';
+    }
+
     setCreating(true);
     try {
       const { job_id } = await createVM({
         servername: hostname,
-        os,
+        os: useISO ? '' : os,
         cpu,
         memory: mem,
         hdd,
         username,
         runcmd: runcmd || undefined,
-        iso_volume: isoVolume || undefined,
+        iso_volume: isoVolumeToSend || undefined,
       });
       navigate(`/vm?job_id=${job_id}`);
     } catch {
@@ -101,14 +175,16 @@ export function VMCreate() {
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 500, color: '#fff', marginBottom: 24 }}>Server Configuration</h2>
 
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>OS</div>
-            <select value={os} onChange={(e) => setOs(e.target.value)} style={inputStyle}>
-              {(settings.os || []).map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+          {!useISO && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>OS</div>
+              <select value={os} onChange={(e) => setOs(e.target.value)} style={inputStyle}>
+                {(settings.os || []).map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>Hostname</div>
             <input type="text" value={hostname} onChange={(e) => setHostname(e.target.value)} placeholder="e.g. web-server-01" style={inputStyle} />
@@ -126,18 +202,65 @@ export function VMCreate() {
               placeholder="# e.g. apt update && apt install -y nginx"
             />
           </div>
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>ISO (optional)</div>
-            <select
-              value={isoVolume}
-              onChange={(e) => setIsoVolume(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">None (use template)</option>
-              {isos.map((iso) => (
-                <option key={iso.id} value={iso.volume_id}>{iso.filename}</option>
-              ))}
-            </select>
+
+          <div style={{ marginBottom: 28, padding: 16, border: '1px solid #111', borderRadius: 4 }}>
+            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12, fontWeight: 500 }}>ISO Image</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <select
+                value={isoVolume}
+                onChange={(e) => setIsoVolume(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">None (use template)</option>
+                {isos.map((iso) => (
+                  <option key={iso.id} value={getISOValue(iso)}>
+                    {iso.filename}{iso.source_url ? ' (URL)' : ''} ({formatBytes(iso.size)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#444', marginBottom: 6 }}>Upload ISO file</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".iso"
+                  onChange={handleUpload}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  style={{ ...smallBtn, color: uploading ? '#555' : '#fff' }}
+                >
+                  <Icon name="hardDrive" size={10} /> {uploading ? 'Uploading...' : 'Choose ISO file'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 11, color: '#444', marginBottom: 6 }}>Download from URL</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={downloadUrl}
+                  onChange={(e) => setDownloadUrl(e.target.value)}
+                  placeholder="https://example.com/ubuntu-22.04.iso"
+                  style={{ ...inputStyle, flex: 1 }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleDownload(); }}
+                />
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading || !downloadUrl.trim()}
+                  style={{ ...smallBtn, color: downloading || !downloadUrl.trim() ? '#555' : '#fff', whiteSpace: 'nowrap' }}
+                >
+                  <Icon name="hardDrive" size={10} /> {downloading ? 'Downloading...' : 'Download'}
+                </button>
+              </div>
+            </div>
           </div>
 
           <button onClick={() => setStep(1)} style={ghostBtn}>
@@ -181,11 +304,15 @@ export function VMCreate() {
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 500, color: '#fff', marginBottom: 24 }}>Review & Create</h2>
           <div style={{ border: '1px solid #111', padding: 24, marginBottom: 24 }}>
-            <ReviewRow label="OS" value={(settings.os || []).find((o) => o.id === os)?.label || os} />
+            {useISO ? (
+              <ReviewRow label="Mode" value="ISO Install" />
+            ) : (
+              <ReviewRow label="OS" value={(settings.os || []).find((o) => o.id === os)?.label || os} />
+            )}
+            {useISO && <ReviewRow label="ISO" value={getSelectedISO()?.filename || isoVolume} />}
             <ReviewRow label="Hostname" value={hostname} />
             <ReviewRow label="Username" value={username} />
             {runcmd && <ReviewRow label="Init Command" value={runcmd} />}
-            {isoVolume && <ReviewRow label="ISO" value={isos.find((i) => i.volume_id === isoVolume)?.filename || isoVolume} />}
             <ReviewRow label="CPU" value={`${cpu} Cores`} />
             <ReviewRow label="Memory" value={`${mem} MB`} />
             <ReviewRow label="Storage" value={`${hdd} GB`} />

@@ -90,8 +90,9 @@ CREATE TABLE IF NOT EXISTS isos (
     id         SERIAL      PRIMARY KEY,
     user_id    INTEGER     NOT NULL REFERENCES users(id),
     filename   TEXT        NOT NULL,
-    volume_id  TEXT        NOT NULL,
+    volume_id  TEXT        NOT NULL DEFAULT '',
     size       BIGINT      NOT NULL DEFAULT 0,
+    source_url TEXT        NOT NULL DEFAULT '',
     created_at TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 `
@@ -342,6 +343,7 @@ type ISO struct {
 	Filename  string
 	VolumeID  string
 	Size      int64
+	SourceURL string
 	CreatedAt time.Time
 }
 
@@ -358,10 +360,58 @@ func createISO(userID int, filename, volumeID string, size int64) (*ISO, error) 
 	return iso, nil
 }
 
+// createISOFromURL はURLからのダウンロードISO情報をデータベースに保存します
+func createISOFromURL(userID int, filename, sourceURL string) (*ISO, error) {
+	iso := &ISO{}
+	err := db.QueryRow(
+		"INSERT INTO isos (user_id, filename, volume_id, size, source_url) VALUES ($1, $2, '', 0, $3) RETURNING id, user_id, filename, volume_id, size, source_url, created_at",
+		userID, filename, sourceURL,
+	).Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.SourceURL, &iso.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create iso from url: %w", err)
+	}
+	return iso, nil
+}
+
+// updateISOVolumeID はISOのvolume_idを更新します（ダウンロード完了時）
+func updateISOVolumeID(isoID int, volumeID string, size int64) error {
+	_, err := db.Exec(
+		"UPDATE isos SET volume_id = $1, size = $2 WHERE id = $3",
+		volumeID, size, isoID,
+	)
+	return err
+}
+
+// getISOByID はISO IDでISO情報を取得します
+func getISOByID(isoID int) (*ISO, error) {
+	iso := &ISO{}
+	err := db.QueryRow(
+		"SELECT id, user_id, filename, volume_id, size, source_url, created_at FROM isos WHERE id = $1",
+		isoID,
+	).Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.SourceURL, &iso.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return iso, nil
+}
+
+// getISOByVolumeID はvolume_idでISO情報を取得します
+func getISOByVolumeID(volumeID string) (*ISO, error) {
+	iso := &ISO{}
+	err := db.QueryRow(
+		"SELECT id, user_id, filename, volume_id, size, source_url, created_at FROM isos WHERE volume_id = $1",
+		volumeID,
+	).Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.SourceURL, &iso.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return iso, nil
+}
+
 // getUserISOs はユーザーのISOリストを取得します
 func getUserISOs(userID int) ([]*ISO, error) {
 	rows, err := db.Query(
-		"SELECT id, user_id, filename, volume_id, size, created_at FROM isos WHERE user_id = $1 ORDER BY created_at DESC",
+		"SELECT id, user_id, filename, volume_id, size, source_url, created_at FROM isos WHERE user_id = $1 ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -372,7 +422,7 @@ func getUserISOs(userID int) ([]*ISO, error) {
 	var isos []*ISO
 	for rows.Next() {
 		iso := &ISO{}
-		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.CreatedAt); err != nil {
+		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.SourceURL, &iso.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan iso: %w", err)
 		}
 		isos = append(isos, iso)
@@ -383,7 +433,7 @@ func getUserISOs(userID int) ([]*ISO, error) {
 // getAllISOs はすべてのISOを取得します（管理者用もしくは全ユーザー共有用）
 func getAllISOs() ([]*ISO, error) {
 	rows, err := db.Query(
-		"SELECT id, user_id, filename, volume_id, size, created_at FROM isos ORDER BY created_at DESC",
+		"SELECT id, user_id, filename, volume_id, size, source_url, created_at FROM isos ORDER BY created_at DESC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query isos: %w", err)
@@ -393,7 +443,7 @@ func getAllISOs() ([]*ISO, error) {
 	var isos []*ISO
 	for rows.Next() {
 		iso := &ISO{}
-		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.CreatedAt); err != nil {
+		if err := rows.Scan(&iso.ID, &iso.UserID, &iso.Filename, &iso.VolumeID, &iso.Size, &iso.SourceURL, &iso.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan iso: %w", err)
 		}
 		isos = append(isos, iso)

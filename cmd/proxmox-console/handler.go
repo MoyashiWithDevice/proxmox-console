@@ -1103,6 +1103,7 @@ func listISOsHandler(w http.ResponseWriter, r *http.Request) {
 			Filename:  iso.Filename,
 			VolumeID:  iso.VolumeID,
 			Size:      iso.Size,
+			SourceURL: iso.SourceURL,
 			CreatedAt: iso.CreatedAt.Format(time.RFC3339),
 		})
 	}
@@ -1113,6 +1114,66 @@ func listISOsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// POST /api/iso/save-url
+func saveISOURLHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var req struct {
+		URL      string `json:"url"`
+		Filename string `json:"filename,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.URL == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing url")
+		return
+	}
+
+	filename := req.Filename
+	if filename == "" {
+		parts := strings.Split(strings.TrimRight(req.URL, "/"), "/")
+		filename = parts[len(parts)-1]
+		if filename == "" {
+			filename = "downloaded.iso"
+		}
+	}
+
+	iso, err := createISOFromURL(dbUserID, filename, req.URL)
+	if err != nil {
+		log.Printf("failed to save ISO URL: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO URL")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ISOInfo{
+		ID:        iso.ID,
+		Filename:  iso.Filename,
+		VolumeID:  iso.VolumeID,
+		Size:      iso.Size,
+		SourceURL: iso.SourceURL,
+		CreatedAt: iso.CreatedAt.Format(time.RFC3339),
+	})
 }
 
 type flushWriter struct {

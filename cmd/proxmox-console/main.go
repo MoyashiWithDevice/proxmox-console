@@ -59,6 +59,7 @@ func main() {
 	http.HandleFunc("/api/settings", requireLogin(settingsAPIHandler))
 	http.HandleFunc("/api/iso/upload", requireLogin(uploadISOHandler))
 	http.HandleFunc("/api/iso/download", requireLogin(downloadISOHandler))
+	http.HandleFunc("/api/iso/save-url", requireLogin(saveISOURLHandler))
 	http.HandleFunc("/api/isos", requireLogin(listISOsHandler))
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
 	http.HandleFunc("/api/auth/flow", authFlowAPIHandler)

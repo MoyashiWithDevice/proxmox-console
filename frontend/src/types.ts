@@ -47,6 +47,7 @@ export interface ISOInfo {
   filename: string;
   volume_id: string;
   size: number;
+  source_url?: string;
   created_at: string;
 }
 

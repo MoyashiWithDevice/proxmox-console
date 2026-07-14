@@ -32,6 +32,7 @@ export interface VMRequest {
   os?: string;
   hostname?: string;
   username?: string;
+  runcmd?: string;
 }
 
 export interface SettingsResponse {
@@ -39,6 +40,14 @@ export interface SettingsResponse {
   memory: { min: number; max: number; step: number };
   hdd: { min: number; max: number; step: number };
   os: { id: string; label: string; image?: string }[];
+}
+
+export interface ISOInfo {
+  id: number;
+  filename: string;
+  volume_id: string;
+  size: number;
+  created_at: string;
 }
 
 export interface OSOption {

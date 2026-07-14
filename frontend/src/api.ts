@@ -1,4 +1,4 @@
-import type { VM, VMRequest, SettingsResponse, KratosFlow } from './types';
+import type { VM, VMRequest, SettingsResponse, KratosFlow, ISOInfo } from './types';
 
 export function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   const options: RequestInit = {
@@ -17,7 +17,7 @@ export function fetchVMs(): Promise<VM[]> {
   return api<VM[]>('/api/vms');
 }
 
-export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string }): Promise<{ job_id: string }> {
+export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string; runcmd?: string; iso_volume?: string }): Promise<{ job_id: string }> {
   return api('/api/vm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -79,4 +79,8 @@ export function fetchKratosError(id: string): Promise<KratosFlow> {
 
 export function fetchJobs(): Promise<VM[]> {
   return api<VM[]>('/api/jobs');
+}
+
+export function fetchISOs(): Promise<ISOInfo[]> {
+  return api<ISOInfo[]>('/api/isos');
 }

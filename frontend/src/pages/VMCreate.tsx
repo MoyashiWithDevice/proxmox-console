@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchSettings, createVM } from '../api';
+import { fetchSettings, createVM, fetchISOs } from '../api';
 import { Icon } from '../components/Icon';
 import { StepIndicator } from '../components/StepIndicator';
-import type { SettingsResponse } from '../types';
+import type { SettingsResponse, ISOInfo } from '../types';
 
 const steps = ['Server Info', 'Resources', 'Review'];
 
@@ -16,6 +16,13 @@ const inputStyle: React.CSSProperties = {
   padding: '10px 12px',
   borderRadius: 4,
   outline: 'none',
+};
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  resize: 'vertical',
+  minHeight: 80,
+  fontFamily: 'inherit',
 };
 
 const ghostBtn: React.CSSProperties = {
@@ -41,9 +48,12 @@ export function VMCreate() {
   const [os, setOs] = useState('');
   const [hostname, setHostname] = useState('');
   const [username, setUsername] = useState('');
+  const [runcmd, setRuncmd] = useState('');
   const [hdd, setHdd] = useState(50);
   const [cpu, setCpu] = useState(4);
   const [mem, setMem] = useState(8);
+  const [isos, setIsos] = useState<ISOInfo[]>([]);
+  const [isoVolume, setIsoVolume] = useState('');
 
   useEffect(() => {
     fetchSettings().then((data) => {
@@ -53,6 +63,7 @@ export function VMCreate() {
       if (data.cpu) setCpu(data.cpu.min || 4);
       if (data.memory) setMem(data.memory.min || 8);
     }).catch(() => {});
+    fetchISOs().then((data) => setIsos(data || [])).catch(() => {});
   }, []);
 
   async function handleCreate() {
@@ -69,6 +80,8 @@ export function VMCreate() {
         memory: mem,
         hdd,
         username,
+        runcmd: runcmd || undefined,
+        iso_volume: isoVolume || undefined,
       });
       navigate(`/vm?job_id=${job_id}`);
     } catch {
@@ -103,6 +116,28 @@ export function VMCreate() {
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>Username</div>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="VM login user" style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>Initialization Command</div>
+            <textarea
+              value={runcmd}
+              onChange={(e) => setRuncmd(e.target.value)}
+              style={textareaStyle}
+              placeholder="# e.g. apt update && apt install -y nginx"
+            />
+          </div>
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 11, color: '#555', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontWeight: 500 }}>ISO (optional)</div>
+            <select
+              value={isoVolume}
+              onChange={(e) => setIsoVolume(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">None (use template)</option>
+              {isos.map((iso) => (
+                <option key={iso.id} value={iso.volume_id}>{iso.filename}</option>
+              ))}
+            </select>
           </div>
 
           <button onClick={() => setStep(1)} style={ghostBtn}>
@@ -149,6 +184,8 @@ export function VMCreate() {
             <ReviewRow label="OS" value={(settings.os || []).find((o) => o.id === os)?.label || os} />
             <ReviewRow label="Hostname" value={hostname} />
             <ReviewRow label="Username" value={username} />
+            {runcmd && <ReviewRow label="Init Command" value={runcmd} />}
+            {isoVolume && <ReviewRow label="ISO" value={isos.find((i) => i.volume_id === isoVolume)?.filename || isoVolume} />}
             <ReviewRow label="CPU" value={`${cpu} Cores`} />
             <ReviewRow label="Memory" value={`${mem} MB`} />
             <ReviewRow label="Storage" value={`${hdd} GB`} />

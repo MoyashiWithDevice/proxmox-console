@@ -85,7 +85,7 @@ export function TerminalPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={() => { window.location.href = `/vm?vmid=${vmid}`; }}
+            onClick={() => { window.location.href = `/vm?id=${vmid}`; }}
             style={{ background: 'none', border: '1px solid #111', color: '#444', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
           >
             Back

@@ -1,5 +1,7 @@
 variable "node_name" {}
 
+variable "cloudinit_id" {}
+
 variable "servername" {}
 variable "cpu" {}
 variable "memory" {}

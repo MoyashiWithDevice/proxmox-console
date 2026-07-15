@@ -4,7 +4,7 @@ resource "proxmox_virtual_environment_file" "cloudcfg" {
   node_name    = var.node_name
 
   source_raw {
-    file_name = "cloudinit-${var.servername}.yaml"
+    file_name = "cloudinit-${var.cloudinit_id}.yaml"
     
     data = templatefile("${path.module}/cloud-config.yaml", {
       username      = var.username

@@ -181,18 +181,18 @@ export function Dashboard() {
                   style={{ background: isHover ? '#080808' : 'transparent', cursor: 'pointer' }}
                   onMouseEnter={() => setHovered(vmid!)}
                   onMouseLeave={() => setHovered(null)}
-                  onDoubleClick={() => navigate(`/vm?vmid=${vmid}`)}
+                  onDoubleClick={() => navigate(`/vm?id=${vmid}`)}
                 >
                   <td style={{ ...td, color: '#444', width: 40 }}>
                     <Icon name="monitor" size={13} color="#444" />
                   </td>
                   <td style={{ ...td, color: '#2a2a2a', fontFamily: 'monospace' }}>
-                    <a href={`/vm?vmid=${vmid}`} style={{ color: '#2a2a2a', textDecoration: 'none' }}>
+                    <a href={`/vm?id=${vmid}`} style={{ color: '#2a2a2a', textDecoration: 'none' }}>
                       {vmid}
                     </a>
                   </td>
                   <td style={{ ...td, color: '#fff' }}>
-                    <a href={`/vm?vmid=${vmid}`} style={{ color: '#fff', textDecoration: 'none' }}>
+                    <a href={`/vm?id=${vmid}`} style={{ color: '#fff', textDecoration: 'none' }}>
                       {name}
                     </a>
                   </td>

@@ -70,7 +70,7 @@ export function VMCreate() {
         hdd,
         username,
       });
-      navigate(`/vm?job_id=${job_id}`);
+      navigate(`/job?id=${job_id}`);
     } catch {
       setCreating(false);
     }

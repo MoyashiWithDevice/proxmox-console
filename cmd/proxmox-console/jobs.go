@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-exec/tfexec"
 )
 
@@ -131,6 +132,8 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
+	cloudinitID := uuid.Must(uuid.NewV7()).String()
+
 	var tfvars string
 	if useISO {
 		tfvars = fmt.Sprintf(`
@@ -140,9 +143,10 @@ memory          = %d
 hdd             = %d
 iso_volume_id   = "%s"
 vlan_id         = %d
+cloudinit_id    = "%s"
 `,
 			req.Servername, req.CPU, req.Memory, req.HDD, req.ISOVolume,
-			vlanID,
+			vlanID, cloudinitID,
 		)
 	} else {
 		tfvars = fmt.Sprintf(`
@@ -166,10 +170,11 @@ vlan_id       = %d
 vm_ip         = "%s"
 vm_gateway    = "%s"
 vm_netmask    = "%s"
+cloudinit_id  = "%s"
 `,
 			req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
 			userPubkey, agentUser, agentPubkey, req.Runcmd,
-			vlanID, vmIP, vmGateway, vmNetmask,
+			vlanID, vmIP, vmGateway, vmNetmask, cloudinitID,
 		)
 	}
 
@@ -214,6 +219,9 @@ vm_netmask    = "%s"
 		failJob(jobID, "Error getting VM ID and node:", err)
 		return
 	}
+
+	// cloudinit ファイルは不要になったので削除
+	deleteCloudInitFile(ctx, nodeName, cloudinitID)
 
 	// DB に VM を記録
 	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)

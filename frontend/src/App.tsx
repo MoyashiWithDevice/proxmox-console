@@ -22,6 +22,7 @@ export function App() {
         <Route element={<AuthGuard><AppLayout /></AuthGuard>}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/vm" element={<VMDetail />} />
+          <Route path="/job" element={<VMDetail />} />
           <Route path="/vm/create" element={<VMCreate />} />
           <Route path="/support" element={<Support />} />
         </Route>

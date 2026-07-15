@@ -13,9 +13,7 @@ type VMRequest struct {
 }
 
 type VMResponse struct {
-	Type       string `json:"type"`
 	VMID       int    `json:"VMID,omitempty"`
-	JOBID      string `json:"jobid,omitempty"`
 	CPU        int    `json:"cpu,omitempty"`
 	Memory     int    `json:"memory,omitempty"`
 	HDD        int    `json:"hdd,omitempty"`
@@ -23,7 +21,15 @@ type VMResponse struct {
 	OS         string `json:"os,omitempty"`
 	Status     string `json:"status,omitempty"`
 	IP         string `json:"IP,omitempty"`
+}
+
+type JobResponse struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	Servername string `json:"servername,omitempty"`
+	IP         string `json:"ip,omitempty"`
 	Log        string `json:"log,omitempty"`
+	VMID       int    `json:"vmid,omitempty"`
 }
 
 type ISOInfo struct {

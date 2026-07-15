@@ -10,3 +10,4 @@ proxmox-console.exe
 static/dist/
 frontend/node_modules/
 cmd/proxmox-console/cert/*
+proxmox-console

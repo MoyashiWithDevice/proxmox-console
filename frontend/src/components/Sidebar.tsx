@@ -49,8 +49,10 @@ export function Sidebar() {
   const { vms, jobs } = useVM();
   const [vmOpen, setVmOpen] = useState(true);
 
-  const currentVMID = searchParams.get('vmid');
-  const currentJobID = searchParams.get('job_id');
+  const currentID = searchParams.get('id');
+
+  const isVMPage = location.pathname === '/vm';
+  const isJobPage = location.pathname === '/job';
 
   return (
     <div style={{
@@ -104,9 +106,9 @@ export function Sidebar() {
                   key={v.VMID}
                   label={v.Name || `VM ${v.VMID}`}
                   status={v.Status || v.status || 'unknown'}
-                  active={String(v.VMID) === currentVMID && location.pathname === '/vm'}
+                  active={String(v.VMID) === currentID && isVMPage}
                   depth={1}
-                  onClick={() => navigate(`/vm?vmid=${v.VMID}`)}
+                  onClick={() => navigate(`/vm?id=${v.VMID}`)}
                 />
               ))}
               {jobs.map((j) => {
@@ -116,9 +118,9 @@ export function Sidebar() {
                     key={jid}
                     label={(j.Servername || j.servername || 'VM') + ' (creating)'}
                     status={j.Status || j.status || ''}
-                    active={jid === currentJobID}
+                    active={jid === currentID && isJobPage}
                     depth={1}
-                    onClick={() => navigate(`/vm?job_id=${jid}`)}
+                    onClick={() => navigate(`/job?id=${jid}`)}
                   />
                 );
               })}

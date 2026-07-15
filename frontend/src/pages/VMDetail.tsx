@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { changeVMState, updateVM, downloadKey } from '../api';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { changeVMState, updateVM, downloadKey, fetchVM, fetchJob } from '../api';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
-import { useVM } from '../context/VMContext';
 import type { VM } from '../types';
 
 const ghostBtn: React.CSSProperties = {
@@ -32,14 +31,22 @@ const inputStyle: React.CSSProperties = {
 };
 
 export function VMDetail() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const id = searchParams.get('vmid');
-  const jobId = searchParams.get('job_id');
-  const { vms, jobs, reload } = useVM();
-  const isJobView = Boolean(jobId);
+  const id = searchParams.get('id');
+  const isJobView = location.pathname === '/job';
 
+  if (isJobView) {
+    return <JobView jobId={id || ''} />;
+  }
+
+  return <VMDetailView vmid={id ? Number(id) : null} />;
+}
+
+function VMDetailView({ vmid }: { vmid: number | null }) {
+  const navigate = useNavigate();
   const [vm, setVM] = useState<VM | null>(null);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -47,59 +54,26 @@ export function VMDetail() {
   const [cores, setCores] = useState(0);
   const [mem, setMem] = useState(0);
   const [hdd, setHdd] = useState(0);
-  const [jobLog, setJobLog] = useState('');
-  const [jobVMID, setJobVMID] = useState<number | null>(null);
-  const [countdown, setCountdown] = useState(10);
-  const logRef = useRef<HTMLDivElement>(null);
 
-  const findJob = useCallback(() => {
-    if (!jobId) return null;
-    return jobs.find((j) => j.id === jobId || j.JOBID === jobId || j.job_id === jobId) || null;
-  }, [jobId, jobs]);
+  const loadVM = useCallback(() => {
+    if (!vmid) return;
+    fetchVM(vmid).then((data) => {
+      setVM(data);
+      if (!editing) {
+        setName(data.Name || data.Servername || '');
+        setCores(data.Cores || data.CPU || 0);
+        setMem(data.Memory || 0);
+        setHdd(data.HDD || data.Hdd || 0);
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [vmid, editing]);
 
   useEffect(() => {
-    if (id) {
-      const match = vms.find((v) => String(v.VMID || v.vmid) === id) || null;
-      setVM(match);
-      if (match && !editing) {
-        setName(match.Name || '');
-        setCores(match.Cores || match.CPU || 0);
-        setMem(match.Memory || 0);
-        setHdd(match.HDD || match.Hdd || 0);
-      }
-    }
-    if (jobId) {
-      const job = findJob();
-      if (job) {
-        setJobLog(job.log || '');
-        if (job.VMID || job.vmid) {
-          setJobVMID(job.VMID || job.vmid || null);
-          if (!id) setVM(job);
-        }
-      }
-    }
-  }, [id, jobId, vms, editing, findJob]);
-
-  useEffect(() => {
-    if (!jobId || !jobVMID || (vm && vm.Status !== 'done')) return;
-    const interval = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(interval);
-          navigate(`/vm?vmid=${jobVMID}`);
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
+    loadVM();
+    const interval = setInterval(loadVM, 10000);
     return () => clearInterval(interval);
-  }, [jobId, jobVMID, vm, navigate]);
-
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [jobLog]);
+  }, [loadVM]);
 
   async function handleToggleVM(vmid: number, action: 'start' | 'stop') {
     if (action === 'stop' && !confirm('Stop this VM?')) return;
@@ -109,7 +83,6 @@ export function VMDetail() {
         const updated = { ...vm, Status: action === 'start' ? 'running' : 'stopped', status: action === 'start' ? 'running' : 'stopped' };
         setVM(updated);
       }
-      reload();
     } catch (err: unknown) {
       alert('Failed: ' + (err as Error).message);
     }
@@ -136,14 +109,9 @@ export function VMDetail() {
 
     setSaving(true);
     try {
-      const data = await updateVM(patch as { vmid: number; name?: string; cores?: number; memory?: number; hdd?: number });
-      if (data.job_id) {
-        setSaving(false);
-        setEditing(false);
-      } else {
-        setSaving(false);
-        setEditing(false);
-      }
+      await updateVM(patch as { vmid: number; name?: string; cores?: number; memory?: number; hdd?: number });
+      setSaving(false);
+      setEditing(false);
     } catch {
       setSaving(false);
       alert('Failed to send request');
@@ -186,43 +154,11 @@ export function VMDetail() {
     }
   }
 
-  if (isJobView) {
-    const job = findJob();
-    const js = job?.Status || job?.status || '\u2014';
-    return (
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', marginBottom: 6, color: '#fff' }}>VM Creation</h1>
-        <p style={{ fontSize: 12, color: '#333', marginBottom: 32 }}>Track your VM creation progress</p>
-        <div style={{ background: '#000', border: '1px solid #111', padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <span style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
-            <Badge status={js} />
-          </div>
-          <div
-            ref={logRef}
-            style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
-            dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
-          />
-          {jobVMID && js === 'done' && (
-            <div style={{ marginTop: 20 }}>
-              <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
-                VM created successfully. Redirecting in {countdown} seconds...
-              </div>
-              <div style={{ width: '100%', height: 2, background: '#111' }}>
-                <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (!id) {
+  if (!vmid) {
     return <div style={{ color: '#555', fontSize: 13 }}>Select a VM from the sidebar to view details</div>;
   }
 
-  if (!vm) {
+  if (loading || !vm) {
     return <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>;
   }
 
@@ -336,6 +272,88 @@ export function VMDetail() {
             Need help? Contact support →
           </a>
         </p>
+      </div>
+    </div>
+  );
+}
+
+function JobView({ jobId }: { jobId: string }) {
+  const navigate = useNavigate();
+  const [job, setJob] = useState<VM | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [countdown, setCountdown] = useState(10);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const loadJob = useCallback(() => {
+    if (!jobId) return;
+    fetchJob(jobId).then((data) => {
+      setJob(data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [jobId]);
+
+  useEffect(() => {
+    loadJob();
+    const interval = setInterval(loadJob, 2000);
+    return () => clearInterval(interval);
+  }, [loadJob]);
+
+  useEffect(() => {
+    if (!job || !job.vmid || job.Status !== 'done' && job.status !== 'done') return;
+    const interval = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(interval);
+          navigate(`/vm?id=${job.vmid}`);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [job, navigate]);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [job?.log]);
+
+  if (!jobId) {
+    return <div style={{ color: '#555', fontSize: 13 }}>Select a job from the sidebar to view progress</div>;
+  }
+
+  if (loading) {
+    return <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>;
+  }
+
+  const js = job?.Status || job?.status || '\u2014';
+  const jobLog = job?.log || '';
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 22, fontWeight: 300, letterSpacing: '-0.02em', marginBottom: 6, color: '#fff' }}>VM Creation</h1>
+      <p style={{ fontSize: 12, color: '#333', marginBottom: 32 }}>Track your VM creation progress</p>
+      <div style={{ background: '#000', border: '1px solid #111', padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <span style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Status</span>
+          <Badge status={js} />
+        </div>
+        <div
+          ref={logRef}
+          style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
+          dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
+        />
+        {job?.vmid && (js === 'done') && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
+              VM created successfully. Redirecting in {countdown} seconds...
+            </div>
+            <div style={{ width: '100%', height: 2, background: '#111' }}>
+              <div style={{ height: '100%', background: '#22c55e', width: `${100 - (countdown / 10 * 100)}%` }} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

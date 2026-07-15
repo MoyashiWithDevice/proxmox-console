@@ -17,7 +17,15 @@ export function fetchVMs(): Promise<VM[]> {
   return api<VM[]>('/api/vms');
 }
 
-export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string; runcmd?: string; iso_volume?: string }): Promise<{ job_id: string }> {
+export function fetchVM(id: number): Promise<VM> {
+  return api<VM>(`/api/vms/${id}`);
+}
+
+export function fetchJob(id: string): Promise<VM> {
+  return api<VM>(`/api/jobs/${id}`);
+}
+
+export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string }): Promise<{ job_id: string }> {
   return api('/api/vm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

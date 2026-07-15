@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -270,4 +271,28 @@ func downloadISOFromURL(ctx context.Context, urlStr, filename string) (string, e
 
 	volumeID := fmt.Sprintf("%s:iso/%s", storage.Name, filename)
 	return volumeID, nil
+}
+
+func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		log.Printf("Warning: deleteCloudInitFile: %v", err)
+		return
+	}
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		log.Printf("Warning: deleteCloudInitFile: %v", err)
+		return
+	}
+	storage, err := node.Storage(ctx, "local")
+	if err != nil {
+		log.Printf("Warning: deleteCloudInitFile: %v", err)
+		return
+	}
+	volID := fmt.Sprintf("local:snippets/cloudinit-%s.yaml", cloudinitID)
+	if _, err := storage.DeleteContent(ctx, volID); err != nil {
+		log.Printf("Warning: deleteCloudInitFile: failed to delete %s: %v", volID, err)
+		return
+	}
+	log.Printf("Cleaned up cloudinit file: %s", volID)
 }

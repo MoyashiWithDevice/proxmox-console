@@ -83,7 +83,7 @@ export function VMCreate() {
         runcmd: runcmd || undefined,
         iso_volume: isoVolume || undefined,
       });
-      navigate(`/vm?job_id=${job_id}`);
+      navigate(`/job?id=${job_id}`);
     } catch {
       setCreating(false);
     }

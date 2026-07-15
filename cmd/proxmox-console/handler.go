@@ -67,44 +67,90 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var result []VMResponse
-	for _, vm := range vms {
-		if strings.ToLower(vm.Status) == "creating" || strings.ToLower(vm.Status) == "modifying" {
-			continue
-		}
-		result = append(result, VMResponse{
-			Type:       "vm",
-			VMID:       vm.VMID,
-			CPU:        vm.CPU,
-			Memory:     vm.Memory,
-			HDD:        vm.HDD,
-			Servername: vm.Servername,
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vms)
+}
 
-			// TODO: 後でOSを表示させる処理を追加するなら
-			// コメントアウトを外してください。
-			// OS:			 ""
-			Status: vm.Status,
-			IP:     vm.IP,
-		})
+// GET: /api/vms/{id}
+func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
+	vmidStr := r.PathValue("id")
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid vm id")
+		return
 	}
 
-	jobs.Range(func(key, value interface{}) bool {
-		job := value.(*Job)
-		if job.OwnerID != userID || job.Status == "done" || job.Status == "retried" {
-			return true
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	dbVm, err := getVMByProxmoxID(vmid)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, "vm not found")
+		return
+	}
+
+	if dbVm.UserID != dbUserID {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
+	b, err := os.ReadFile(tfstatePath)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read vm state")
+		return
+	}
+	var state TFState
+	if err := json.Unmarshal(b, &state); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to parse vm state")
+		return
+	}
+
+	vm := VMResponse{
+		VMID:   dbVm.ProxmoxVMID,
+		Status: dbVm.Status,
+		IP:     "-",
+	}
+	for _, res := range state.Resources {
+		if res.Type != "proxmox_virtual_environment_vm" || len(res.Instances) == 0 {
+			continue
 		}
-		result = append(result, VMResponse{
-			Type:       "job",
-			JOBID:      key.(string),
-			Status:     job.Status,
-			Servername: job.Servername,
-			Log:        job.Log,
-		})
-		return true
-	})
+		attr := res.Instances[0].Attributes
+		vm.Servername = parseString(attr["name"])
+		if parsed, ok := parseInt(attr["vm_id"]); ok {
+			vm.VMID = parsed
+		}
+		if cores, ok := parseFirstMapInt(attr["cpu"], "cores"); ok {
+			vm.CPU = cores
+		}
+		if mem, ok := parseFirstMapInt(attr["memory"], "dedicated"); ok {
+			vm.Memory = mem
+		}
+		if hdd, ok := parseFirstMapInt(attr["disk"], "size"); ok {
+			vm.HDD = hdd
+		}
+		break
+	}
+
+	if strings.EqualFold(dbVm.Status, "completed") {
+		ctx := context.Background()
+		if info, err := getProxmoxVMInfo(ctx, dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
+			vm.Status = info.Status
+			vm.IP = info.IP
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(vm)
 }
 
 // PUT, PATCH, DELETE: /api/vm
@@ -142,12 +188,8 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	go runTerraformJob(jobID, &req, r)
 
-	if r.Header.Get("Accept") == "application/json" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
-		return
-	}
-	http.Redirect(w, r, "/vm.html?job_id="+jobID, http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"job_id": jobID})
 }
 
 // POST: /api/vm/retry
@@ -332,18 +374,20 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET: /api/jobs
 func listJobsHandler(w http.ResponseWriter, r *http.Request) {
-	type jobResp struct {
-		ID         string `json:"id"`
-		Status     string `json:"status"`
-		IP         string `json:"ip"`
-		Servername string `json:"servername"`
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
 	}
 
-	var result []VMResponse
+	var result []JobResponse
 	jobs.Range(func(key, value interface{}) bool {
 		j := value.(*Job)
-		result = append(result, VMResponse{
-			JOBID:      key.(string),
+		if j.OwnerID != userID || j.Status == "done" || j.Status == "retried" {
+			return true
+		}
+		result = append(result, JobResponse{
+			ID:         key.(string),
 			Status:     j.Status,
 			Servername: j.Servername,
 			IP:         j.IP,
@@ -353,6 +397,50 @@ func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// GET: /api/jobs/{id}
+func jobDetailGetHandler(w http.ResponseWriter, r *http.Request) {
+	jobID := r.PathValue("id")
+	if jobID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing job id")
+		return
+	}
+
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	jobAny, ok := jobs.Load(jobID)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "job not found")
+		return
+	}
+
+	job := jobAny.(*Job)
+	if job.OwnerID != userID {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	b, err := os.ReadFile(job.LogPath)
+	if err == nil {
+		job.Log = string(b)
+	}
+
+	resp := JobResponse{
+		ID:         jobID,
+		Status:     job.Status,
+		Servername: job.Servername,
+		IP:         job.IP,
+		Log:        job.Log,
+		VMID:       job.VMID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // GET: /api/vm/terminal

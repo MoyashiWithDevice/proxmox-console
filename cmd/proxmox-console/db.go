@@ -83,8 +83,12 @@ CREATE TABLE IF NOT EXISTS vms (
     node_name      TEXT        NOT NULL,
     tf_workdir     TEXT        NOT NULL,
     status         TEXT        NOT NULL DEFAULT 'creating',
+    ip             TEXT        NOT NULL DEFAULT '-',
     created_at     TIMESTAMP   NOT NULL DEFAULT NOW()
 );
+
+-- 既存環境に ip カラムがなければ追加
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS ip TEXT NOT NULL DEFAULT '-';
 
 CREATE TABLE IF NOT EXISTS isos (
     id         SERIAL      PRIMARY KEY,
@@ -119,6 +123,7 @@ type ManageVM struct {
 	NodeName    string
 	TFWorkdir   string
 	Status      string
+	IP          string
 	CreatedAt   time.Time
 }
 
@@ -167,12 +172,12 @@ func getOrCreateUser(kratosID string) (*User, error) {
 }
 
 // createVM はVM情報をデータベースに保存します
-func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*ManageVM, error) {
+func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string, ip string) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"INSERT INTO vms (user_id, proxmox_vm_id, node_name, tf_workdir, status) VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at",
-		userID, proxmoxVMID, nodeName, tfWorkdir, "creating",
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+		"INSERT INTO vms (user_id, proxmox_vm_id, node_name, tf_workdir, status, ip) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, user_id, proxmox_vm_id, node_name, tf_workdir, status, ip, created_at",
+		userID, proxmoxVMID, nodeName, tfWorkdir, "creating", ip,
+	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.IP, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vm: %w", err)
@@ -184,7 +189,7 @@ func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*
 // getUserVMs はユーザーのVMリストを取得します
 func getUserVMs(userID int) ([]*ManageVM, error) {
 	rows, err := db.Query(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE user_id = $1 ORDER BY created_at DESC",
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, ip, created_at FROM vms WHERE user_id = $1 ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -195,7 +200,7 @@ func getUserVMs(userID int) ([]*ManageVM, error) {
 	var vms []*ManageVM
 	for rows.Next() {
 		vm := &ManageVM{}
-		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt); err != nil {
+		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.IP, &vm.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan vm: %w", err)
 		}
 		vms = append(vms, vm)
@@ -212,9 +217,9 @@ func getUserVMs(userID int) ([]*ManageVM, error) {
 func getVM(vmID int) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE id = $1",
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, ip, created_at FROM vms WHERE id = $1",
 		vmID,
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.IP, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm: %w", err)
@@ -226,9 +231,9 @@ func getVM(vmID int) (*ManageVM, error) {
 func getVMByProxmoxID(proxmoxID int) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1",
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, ip, created_at FROM vms WHERE proxmox_vm_id = $1",
 		proxmoxID,
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.IP, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm: %w", err)

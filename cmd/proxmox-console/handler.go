@@ -154,11 +154,7 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		if info, err := getProxmoxVMInfo(ctx, dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
 			vm.Status = info.Status
-			if info.IP != "-" {
-				vm.IP = info.IP
-			} else if dbVm.IP != "-" {
-				vm.IP = dbVm.IP
-			}
+			vm.IP = info.IP
 		}
 	}
 
@@ -495,16 +491,10 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
 	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vmid)
-	vmIP := info.IP
-	if err != nil || vmIP == "-" {
+	if err != nil || info.IP == "-" {
 		log.Printf("vmTerminalHandler: getProxmoxVMInfo(node=%s, vmid=%d): err=%v, ip=%q", vm.NodeName, vmid, err, info.IP)
-		if vm.IP != "-" {
-			vmIP = vm.IP
-			log.Printf("vmTerminalHandler: using stored IP %q as fallback", vmIP)
-		} else {
-			http.Error(w, "VM IP not available", http.StatusInternalServerError)
-			return
-		}
+		http.Error(w, "VM IP not available", http.StatusInternalServerError)
+		return
 	}
 
 	// ── SSH接続 ───────────────────────────────────────────────────────────
@@ -514,7 +504,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	privKeyPath := filepath.Join("cert", "agent_id_rsa")
 
-	sshClient, err := createSSHClient(vmIP, agentUser, privKeyPath)
+	sshClient, err := createSSHClient(info.IP, agentUser, privKeyPath)
 	if err != nil {
 		log.Printf("vmTerminalHandler: createSSHClient(ip=%s, user=%s): %v", info.IP, agentUser, err)
 		http.Error(w, "ssh connection failed", http.StatusInternalServerError)

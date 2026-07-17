@@ -100,18 +100,14 @@ func listUserVMs(userID string) ([]VMResponse, error) {
 					vm.HDD = hdd
 				}
 
-			if strings.EqualFold(dbVm.Status, "completed") {
-				if info, err := getProxmoxVMInfo(ctx, dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
-					vm.Status = info.Status
-					if info.IP != "-" {
+				if strings.EqualFold(dbVm.Status, "completed") {
+					if info, err := getProxmoxVMInfo(ctx, dbVm.NodeName, dbVm.ProxmoxVMID); err == nil {
+						vm.Status = info.Status
 						vm.IP = info.IP
-					} else if dbVm.IP != "-" {
-						vm.IP = dbVm.IP
+					} else {
+						log.Printf("warning: failed to get proxmox vm info for VM %d: %v", dbVm.ProxmoxVMID, err)
 					}
-				} else {
-					log.Printf("warning: failed to get proxmox vm info for VM %d: %v", dbVm.ProxmoxVMID, err)
 				}
-			}
 
 				if vm.Servername != "" && vm.Memory > 0 && vm.CPU > 0 && vm.HDD > 0 {
 					results[i] = result{vm: vm, ok: true}

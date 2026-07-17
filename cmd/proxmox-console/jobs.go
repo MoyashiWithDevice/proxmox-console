@@ -223,8 +223,8 @@ cloudinit_id  = "%s"
 	// cloudinit ファイルは不要になったので削除
 	deleteCloudInitFile(ctx, nodeName, cloudinitID)
 
-	// DB に VM を記録（期待IPも保存）
-	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir, vmIP)
+	// DB に VM を記録
+	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
 	if err != nil {
 		failJob(jobID, "Error creating VM in database:", err)
 		return
@@ -249,10 +249,8 @@ cloudinit_id  = "%s"
 		job.Log = string(b)
 	}
 	if job.VMID != 0 {
-		if vmInfo, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vmInfo.IP != "-" {
-			job.IP = vmInfo.IP
-		} else if vmIP != "-" {
-			job.IP = vmIP
+		if vm, err := getProxmoxVMInfo(context.Background(), job.NodeName, job.VMID); err == nil && vm.IP != "-" {
+			job.IP = vm.IP
 		}
 	}
 	job.Status = "done"

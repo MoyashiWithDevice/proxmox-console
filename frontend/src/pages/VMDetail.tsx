@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { changeVMState, updateVM, downloadKey, fetchVM, fetchJob } from '../api';
+import { changeVMState, updateVM, deleteVM, downloadKey, fetchVM, fetchJob } from '../api';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import type { VM } from '../types';
@@ -96,20 +96,20 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
       return;
     }
 
-    const patch: Record<string, unknown> = { vmid: vm.VMID };
+    const patch: Record<string, unknown> = {};
     if (name !== (vm.Name || '')) patch.name = name;
     if (parseInt(String(cores), 10) !== (vm.Cores || vm.CPU || 0)) patch.cores = parseInt(String(cores), 10);
     if (parseInt(String(mem), 10) !== (vm.Memory || 0)) patch.memory = parseInt(String(mem), 10);
     if (newHdd !== (vm.HDD || vm.Hdd || 0)) patch.hdd = newHdd;
 
-    if (Object.keys(patch).length <= 1) {
+    if (Object.keys(patch).length === 0) {
       setEditing(false);
       return;
     }
 
     setSaving(true);
     try {
-      await updateVM(patch as { vmid: number; name?: string; cores?: number; memory?: number; hdd?: number });
+      await updateVM(vm.VMID, patch as { name?: string; cores?: number; memory?: number; hdd?: number });
       setSaving(false);
       setEditing(false);
     } catch {
@@ -122,15 +122,8 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     if (!vm?.VMID || !confirm('Are you sure? This action cannot be undone.')) return;
     setDeleting(true);
     try {
-      const res = await fetch('/api/vm', {
-        method: 'DELETE', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vmid: vm.VMID }),
-      });
-      if (res.ok) { navigate('/'); return; }
-      const body = await res.text();
-      alert('Deletion failed: ' + body);
-      setDeleting(false);
+      await deleteVM(vm.VMID);
+      navigate('/');
     } catch (err: unknown) {
       alert('Deletion failed: ' + (err as Error).message);
       setDeleting(false);

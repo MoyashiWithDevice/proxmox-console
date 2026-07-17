@@ -153,21 +153,7 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(vm)
 }
 
-// PUT, PATCH, DELETE: /api/vm
-func vmDetailHandler(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method == http.MethodPost {
-		createVMHandler(w, r)
-	} else if r.Method == http.MethodPatch {
-		updateVMHandler(w, r)
-	} else if r.Method == http.MethodDelete {
-		deleteVMHandler(w, r)
-	} else {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-// PUT: /api/vm
+// POST: /api/vms
 func createVMHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 
@@ -194,31 +180,19 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // POST: /api/vm/retry
 func retryVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	var req struct {
-		JobID string `json:"job_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-
-	if req.JobID == "" {
+	jobID := r.PathValue("id")
+	if jobID == "" {
 		writeJSONError(w, http.StatusBadRequest, "missing job_id")
 		return
 	}
 
-	jobAny, ok := jobs.Load(req.JobID)
+	jobAny, ok := jobs.Load(jobID)
 	if !ok {
 		writeJSONError(w, http.StatusNotFound, "job not found")
 		return
@@ -249,7 +223,7 @@ func retryVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Mark old job as retried
 	job.Status = "retried"
-	jobs.Store(req.JobID, job)
+	jobs.Store(jobID, job)
 
 	// Create new job with the same request
 	newJobID := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -272,23 +246,21 @@ func retryVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // PATCH: /api/vm
 func updateVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	userID, _ := getKratosUserIDFromRequest(r)
+
+	vmidStr := r.PathValue("id")
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
+		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
-
-	userID, _ := getKratosUserIDFromRequest(r)
 
 	var req VMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	if req.VMID == 0 {
-		http.Error(w, "missing vmid", 400)
-		return
-	}
+	req.VMID = vmid
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
 	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: userID, VMID: req.VMID})
@@ -306,27 +278,20 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // DELETE: /api/vm
 func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	var req VMRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if req.VMID == 0 {
+	vmidStr := r.PathValue("id")
+	vmid, err := strconv.Atoi(vmidStr)
+	if err != nil {
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
+
+	req := VMRequest{VMID: vmid}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
@@ -443,7 +408,6 @@ func jobDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GET: /api/vm/terminal
 func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	// ── 認証 ──────────────────────────────────────────────────────────────
@@ -454,7 +418,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── パラメータ取得 ────────────────────────────────────────────────────
-	vmidStr := r.URL.Query().Get("vmid")
+	vmidStr := r.PathValue("id")
 	if vmidStr == "" {
 		http.Error(w, "missing vmid", http.StatusBadRequest)
 		return
@@ -647,34 +611,23 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		VMID  int    `json:"vmid"`
 		State string `json:"state"`
 	}
 
-	vmid, err := strconv.Atoi(r.FormValue("vmid"))
+	vmidStr := r.PathValue("id")
+	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": "invalid request",
+			"error": "invalid vmid",
 		})
 		return
 	}
-
-	req.VMID = vmid
-	req.State = r.FormValue("state")
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "invalid request",
-		})
-		return
-	}
-
-	if req.VMID == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "missing vmid",
 		})
 		return
 	}
@@ -696,7 +649,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID)
+	vm, err := getVMByProxmoxID(vmid)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -743,18 +696,13 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	vmidStr := r.URL.Query().Get("vmid")
+	vmidStr := r.PathValue("id")
 	if vmidStr == "" {
 		http.Error(w, "missing vmid", http.StatusBadRequest)
 		return

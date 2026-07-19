@@ -260,33 +260,6 @@ func updateVMStatus(vmID int, status string) error {
 	return nil
 }
 
-// vmSubnetInfo は単一サブネットの情報を返します
-// 全VMが同一サブネット 10.0.0.0/24 で利用可能です
-func vmSubnetInfo() (network, gateway, netmask string) {
-	return "10.0.0.0", "10.0.0.1", "24"
-}
-
-// vmIPFromIndex はインデックスからVMのIPアドレスを計算します
-// ゲートウェイが10.0.0.1のため、VMは10.0.0.2から割り当てられます
-func vmIPFromIndex(vmIndex int) string {
-	host := 2 + vmIndex
-	return fmt.Sprintf("10.0.0.%d", host)
-}
-
-// getUserVMCount はユーザーの VM 数を返します
-func getUserVMCount(userID int) (int, error) {
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM vms WHERE user_id = $1").Scan(&count)
-	return count, err
-}
-
-// getTotalVMCount は全VM数を返します（単一サブネットのIP割り当てに使用）
-func getTotalVMCount() (int, error) {
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM vms").Scan(&count)
-	return count, err
-}
-
 // ISO はアップロードされたISO情報を表します
 type ISO struct {
 	ID        int

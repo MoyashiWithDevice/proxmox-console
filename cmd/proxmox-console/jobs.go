@@ -67,14 +67,6 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 	}
 	dbUserID := user.ID
 
-	// 単一サブネット (10.0.0.0/24) でIPを計算
-	_, vmGateway, vmNetmask := vmSubnetInfo()
-	vmCount, errCount := getTotalVMCount()
-	if errCount != nil {
-		vmCount = 0
-	}
-	vmIP := vmIPFromIndex(vmCount)
-
 	// VMリクエストのハッシュを計算
 	vmhash, err := hashRequest(req)
 	if err != nil {
@@ -163,14 +155,10 @@ EOT
 runcmd        =<<EOT
 %s
 EOT
-vm_ip         = "%s"
-vm_gateway    = "%s"
-vm_netmask    = "%s"
 cloudinit_id  = "%s"
 `,
 			req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
-			userPubkey, agentUser, agentPubkey, req.Runcmd,
-			vmIP, vmGateway, vmNetmask, cloudinitID,
+			userPubkey, agentUser, agentPubkey, req.Runcmd, cloudinitID,
 		)
 	}
 

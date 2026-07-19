@@ -26,15 +26,15 @@ export function fetchJob(id: string): Promise<VM> {
 }
 
 export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string; runcmd?: string }): Promise<{ job_id: string }> {
-  return api('/api/vm', {
+  return api('/api/vms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   });
 }
 
-export function updateVM(req: VMRequest): Promise<{ job_id: string; status: string }> {
-  return api('/api/vm', {
+export function updateVM(vmid: number, req: Omit<VMRequest, 'vmid'>): Promise<{ job_id: string; status: string }> {
+  return api(`/api/vms/${vmid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -42,23 +42,21 @@ export function updateVM(req: VMRequest): Promise<{ job_id: string; status: stri
 }
 
 export function deleteVM(vmid: number): Promise<{ status: string }> {
-  return api('/api/vm', {
+  return api(`/api/vms/${vmid}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vmid }),
   });
 }
 
 export function changeVMState(vmid: number, state: 'start' | 'stop'): Promise<{ status: string }> {
-  return api('/api/vm/state', {
+  return api(`/api/vms/${vmid}/state`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vmid, state }),
+    body: JSON.stringify({ state }),
   });
 }
 
 export function downloadKey(vmid: number): Promise<Blob> {
-  return fetch(`/api/vm/key?vmid=${vmid}`, { credentials: 'include' }).then((res) => res.blob());
+  return fetch(`/api/vms/${vmid}/key`, { credentials: 'include' }).then((res) => res.blob());
 }
 
 export function fetchSettings(): Promise<SettingsResponse> {

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { useVM } from '../context/VMContext';
+import { changeVMState } from '../api';
 import { useState, type MouseEvent } from 'react';
 
 type StatusFilter = 'all' | 'running' | 'stopped';
@@ -63,15 +64,10 @@ export function Dashboard() {
     return true;
   });
 
-  async function handleAction(vmid: number | undefined, action: string) {
+  async function handleAction(vmid: number | undefined, action: 'start' | 'stop') {
     if (!vmid) return;
     try {
-      await fetch('/api/vm', {
-        method: action.toUpperCase(),
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vmid }),
-      });
+      await changeVMState(vmid, action);
       reload();
     } catch {}
   }
@@ -208,10 +204,10 @@ export function Dashboard() {
                   <td style={{ ...td, color: '#ccc' }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {status !== 'running' && (
-                        <ActionBtn label="Start" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'put'); }} />
+                        <ActionBtn label="Start" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'start'); }} />
                       )}
                       {status === 'running' && (
-                        <ActionBtn label="Stop" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'delete'); }} />
+                        <ActionBtn label="Stop" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'stop'); }} />
                       )}
                     </div>
                   </td>

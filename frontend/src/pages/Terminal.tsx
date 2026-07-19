@@ -46,7 +46,7 @@ export function TerminalPage() {
 
     function connect() {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${proto}//${window.location.host}/api/vm/terminal?vmid=${encodeURIComponent(vmid)}`;
+      const wsUrl = `${proto}//${window.location.host}/api/vms/${encodeURIComponent(vmid)}/terminal`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

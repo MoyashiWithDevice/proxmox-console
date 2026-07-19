@@ -131,13 +131,10 @@ func getOrCreateUser(kratosID string) (*User, error) {
 	).Scan(&user.ID, &user.KratosID, &user.Role, &user.VLANID, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
-		vlanID, err := allocateVLANID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to allocate VLAN ID: %w", err)
-		}
+		// ユーザーが存在しないので作成
 		err = db.QueryRow(
-			"INSERT INTO users (kratos_id, role, vlan_id) VALUES ($1, $2, $3) RETURNING id, kratos_id, role, vlan_id, created_at",
-			kratosID, "user", vlanID,
+			"INSERT INTO users (kratos_id, role) VALUES ($1, $2) RETURNING id, kratos_id, role, vlan_id, created_at",
+			kratosID, "user",
 		).Scan(&user.ID, &user.KratosID, &user.Role, &user.VLANID, &user.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
@@ -147,20 +144,6 @@ func getOrCreateUser(kratosID string) (*User, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-
-	// 既存ユーザーで VLAN ID が未割当の場合はバックフィル
-	if !user.VLANID.Valid {
-		vlanID, err := allocateVLANID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to allocate VLAN ID for existing user: %w", err)
-		}
-		_, err = db.Exec("UPDATE users SET vlan_id = $1 WHERE id = $2", vlanID, user.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update VLAN ID for existing user: %w", err)
-		}
-		user.VLANID.Int64 = int64(vlanID)
-		user.VLANID.Valid = true
 	}
 
 	return user, nil
@@ -278,61 +261,6 @@ func updateVMStatus(vmID int, status string) error {
 	}
 
 	return nil
-}
-
-// allocateVLANID は未使用の VLAN ID をプールから採番します
-func allocateVLANID() (int, error) {
-	used := make(map[int]bool)
-	rows, err := db.Query("SELECT vlan_id FROM users WHERE vlan_id IS NOT NULL")
-	if err != nil {
-		return 0, fmt.Errorf("failed to query used VLAN IDs: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err == nil {
-			used[id] = true
-		}
-	}
-
-	for id := SettingsConf.VLAN.Min; id <= SettingsConf.VLAN.Max; id++ {
-		if !used[id] {
-			return id, nil
-		}
-	}
-	return 0, fmt.Errorf("no available VLAN ID in range %d-%d", SettingsConf.VLAN.Min, SettingsConf.VLAN.Max)
-}
-
-// releaseVLANID はユーザーの VLAN ID を解放します
-func releaseVLANID(userID int) error {
-	_, err := db.Exec("UPDATE users SET vlan_id = NULL WHERE id = $1", userID)
-	return err
-}
-
-// vlanToSubnet は VLAN ID からサブネット情報を計算します
-// IP: 10.{vlan & 0xFF}.{((vlan >> 8) & 0xF) << 4}.0/24
-func vlanToSubnet(vlanID int) (network, gateway, netmask string) {
-	octet2 := vlanID & 0xFF
-	octet3 := ((vlanID >> 8) & 0xF) << 4
-	network = fmt.Sprintf("10.%d.%d.0", octet2, octet3)
-	gateway = fmt.Sprintf("10.%d.%d.1", octet2, octet3)
-	netmask = "24"
-	return
-}
-
-// vlanToVMIP は VLAN ID と VM インデックスから VM の IP アドレスを計算します
-func vlanToVMIP(vlanID int, vmIndex int) string {
-	octet2 := vlanID & 0xFF
-	octet3 := ((vlanID >> 8) & 0xF) << 4
-	host := 2 + vmIndex
-	return fmt.Sprintf("10.%d.%d.%d", octet2, octet3, host)
-}
-
-// getUserVMCount はユーザーの VM 数を返します
-func getUserVMCount(userID int) (int, error) {
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM vms WHERE user_id = $1", userID).Scan(&count)
-	return count, err
 }
 
 // ISO はアップロードされたISO情報を表します

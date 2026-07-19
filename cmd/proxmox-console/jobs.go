@@ -59,23 +59,21 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		return
 	}
 
-	// DB からユーザー情報を取得または作成（VLAN ID 取得のため直接呼び出し）
+	// DB からユーザー情報を取得または作成
 	user, err := getOrCreateUser(kratosUserID)
 	if err != nil {
 		failJob(jobID, "Error getting database user:", err)
 		return
 	}
 	dbUserID := user.ID
-	vlanID := 0
-	if user.VLANID.Valid {
-		vlanID = int(user.VLANID.Int64)
-	}
-	_, vmGateway, vmNetmask := vlanToSubnet(vlanID)
-	vmCount, errCount := getUserVMCount(dbUserID)
+
+	// 単一サブネット (10.0.0.0/24) でIPを計算
+	_, vmGateway, vmNetmask := vmSubnetInfo()
+	vmCount, errCount := getTotalVMCount()
 	if errCount != nil {
 		vmCount = 0
 	}
-	vmIP := vlanToVMIP(vlanID, vmCount)
+	vmIP := vmIPFromIndex(vmCount)
 
 	// VMリクエストのハッシュを計算
 	vmhash, err := hashRequest(req)
@@ -142,11 +140,10 @@ cpu             = %d
 memory          = %d
 hdd             = %d
 iso_volume_id   = "%s"
-vlan_id         = %d
 cloudinit_id    = "%s"
 `,
 			req.Servername, req.CPU, req.Memory, req.HDD, req.ISOVolume,
-			vlanID, cloudinitID,
+			cloudinitID,
 		)
 	} else {
 		tfvars = fmt.Sprintf(`
@@ -166,7 +163,6 @@ EOT
 runcmd        =<<EOT
 %s
 EOT
-vlan_id       = %d
 vm_ip         = "%s"
 vm_gateway    = "%s"
 vm_netmask    = "%s"
@@ -174,7 +170,7 @@ cloudinit_id  = "%s"
 `,
 			req.Servername, req.CPU, req.Memory, req.HDD, req.Username, selectedOS.TemplateID,
 			userPubkey, agentUser, agentPubkey, req.Runcmd,
-			vlanID, vmIP, vmGateway, vmNetmask, cloudinitID,
+			vmIP, vmGateway, vmNetmask, cloudinitID,
 		)
 	}
 

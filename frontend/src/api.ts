@@ -1,4 +1,4 @@
-import type { VM, VMRequest, SettingsResponse, KratosFlow, ISOInfo } from './types';
+import type { VM, VMRequest, SettingsResponse, KratosFlow } from './types';
 
 export function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   const options: RequestInit = {
@@ -87,6 +87,4 @@ export function fetchJobs(): Promise<VM[]> {
   return api<VM[]>('/api/jobs');
 }
 
-export function fetchISOs(): Promise<ISOInfo[]> {
-  return api<ISOInfo[]>('/api/isos');
-}
+

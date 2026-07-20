@@ -335,12 +335,17 @@ func hasFlowErrors(flow map[string]interface{}) bool {
 	return false
 }
 
-func createKratosFlowInternal(flowType string) (map[string]interface{}, []*http.Cookie, error) {
+func createKratosFlowInternal(flowType string, cookies ...[]*http.Cookie) (map[string]interface{}, []*http.Cookie, error) {
 	req, err := http.NewRequest("GET", AppConfig.Kratos.BROWSERURL+"/self-service/"+flowType+"/browser", nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if len(cookies) > 0 {
+		for _, c := range cookies[0] {
+			req.AddCookie(c)
+		}
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

@@ -25,9 +25,5 @@
   ],
   "agent": {
     "user": "agent"
-  },
-  "vlan": {
-    "min": 100,
-    "max": 500
   }
 }

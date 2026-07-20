@@ -42,14 +42,6 @@ export interface SettingsResponse {
   os: { id: string; label: string; image?: string }[];
 }
 
-export interface ISOInfo {
-  id: number;
-  filename: string;
-  volume_id: string;
-  size: number;
-  created_at: string;
-}
-
 export interface OSOption {
   id: string;
   label: string;

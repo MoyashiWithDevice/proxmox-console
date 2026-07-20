@@ -94,7 +94,7 @@ func serveSPAWithFlow(w http.ResponseWriter, flow map[string]interface{}) {
 func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		flow, cookies, err := createKratosFlowInternal("login")
+		flow, cookies, err := createKratosFlowInternal("login", r.Cookies())
 		if err != nil {
 			http.Error(w, "Failed to create login flow", http.StatusInternalServerError)
 			return
@@ -115,7 +115,7 @@ func loginUIHandler(w http.ResponseWriter, r *http.Request) {
 func registrationUIHandler(w http.ResponseWriter, r *http.Request) {
 	flowID := r.URL.Query().Get("flow")
 	if flowID == "" {
-		flow, cookies, err := createKratosFlowInternal("registration")
+		flow, cookies, err := createKratosFlowInternal("registration", r.Cookies())
 		if err != nil {
 			http.Error(w, "Failed to create registration flow", http.StatusInternalServerError)
 			return

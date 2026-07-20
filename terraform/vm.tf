@@ -24,9 +24,16 @@ resource "proxmox_virtual_environment_vm" "vm" {
   network_device {
     bridge  = "vmbr0"
     model   = "virtio"
+    vlan_id = 10
   }
 
   initialization {
+    ip_config {
+      ipv4 {
+        address = "dhcp"
+      }
+    }
+
     user_data_file_id = proxmox_virtual_environment_file.cloudcfg.id
   }
 

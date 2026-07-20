@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { KratosFlow, FlowNode } from '../types';
 import { AuthLayout } from '../components/AuthLayout';
+import { submitAuthFlow } from '../api';
 
 interface AuthPageProps {
   isRegistration?: boolean;
@@ -183,24 +185,105 @@ function ErrorCard({ title, message, description }: { title: string; message?: s
 }
 
 function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: boolean }) {
+  const navigate = useNavigate();
   const { ui } = flow;
   const nodes = ui?.nodes || [];
-  const method = ui?.method || 'POST';
-  const messages = ui?.messages || [];
   const title = isRegistration ? 'Create account' : 'Sign in';
   const subtitle = isRegistration ? 'Create your new account.' : 'Welcome back.';
   const submitLabel = isRegistration ? 'Create account' : 'Sign in';
   const proxyAction = isRegistration ? '/api/auth/registration' : '/api/auth/login';
 
+  const [submitting, setSubmitting] = useState(false);
+  const [globalMessages, setGlobalMessages] = useState<{ type: string; text: string }[]>(ui?.messages || []);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, { type: string; text: string }[]>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    syncErrorsFromFlow(flow);
+  }, [flow]);
+
+  function syncErrorsFromFlow(f: KratosFlow) {
+    const fieldMsgs: Record<string, { type: string; text: string }[]> = {};
+    f.ui?.nodes?.forEach((node) => {
+      if (node.messages?.length) {
+        const name = node.attributes?.name;
+        if (name) fieldMsgs[name] = node.messages;
+      }
+    });
+    setFieldErrors(fieldMsgs);
+    setGlobalMessages(f.ui?.messages || []);
+  }
+
+  function validate(form: HTMLFormElement): Record<string, string> {
+    const errs: Record<string, string> = {};
+    const fd = new FormData(form);
+    const email = (fd.get('traits.email') as string) || (fd.get('identifier') as string) || '';
+    const password = (fd.get('password') as string) || '';
+
+    if (isRegistration || fd.has('identifier')) {
+      if (!email) errs.email = 'Email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = 'Invalid email format';
+    }
+
+    if (isRegistration) {
+      if (!password) errs.password = 'Password is required';
+      else if (password.length < 4) errs.password = 'Password must be at least 4 characters';
+    }
+
+    return errs;
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setValidationErrors({});
+
+    const vErrs = validate(e.currentTarget);
+    if (Object.keys(vErrs).length > 0) {
+      setValidationErrors(vErrs);
+      return;
+    }
+
+    setSubmitting(true);
+    const formData = new URLSearchParams();
+    new FormData(e.currentTarget).forEach((v, k) => formData.append(k, v.toString()));
+
+    const methodBtn = nodes.find(
+      (n) => n.type === 'input' && n.attributes?.type === 'submit' && n.attributes?.name
+    );
+    if (methodBtn?.attributes?.name && methodBtn.attributes.value) {
+      formData.append(methodBtn.attributes.name, String(methodBtn.attributes.value));
+    }
+
+    try {
+      const data = await submitAuthFlow(proxyAction, formData);
+      if ('redirect_to' in data && data.redirect_to) {
+        navigate(data.redirect_to);
+        return;
+      }
+      syncErrorsFromFlow(data as KratosFlow);
+    } catch {
+      setGlobalMessages([{ type: 'error', text: 'Network error. Please try again.' }]);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   let hasPassword = false;
   let submitContent: React.ReactNode = null;
+
+  function getFieldError(name: string): string | null {
+    if (validationErrors[name]) return validationErrors[name];
+    const msgs = fieldErrors[name];
+    if (msgs?.length) return msgs.map((m) => m.text).join(' ');
+    return null;
+  }
 
   return (
     <div style={{ border: '1px solid #111', borderRadius: 4, padding: '36px 32px', background: '#000' }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 4, color: '#fff' }}>{title}</h1>
       <p style={{ fontSize: 14, color: '#555', marginBottom: 28, lineHeight: 1.5 }}>{subtitle}</p>
 
-      {messages.map((msg, i) => {
+      {globalMessages.map((msg, i) => {
         const color = msg.type === 'error' ? '#f43f5e' : msg.type === 'success' ? '#22c55e' : '#f59e0b';
         return (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', border: '1px solid #111', borderRadius: 4, marginBottom: 18, fontSize: 12, color, lineHeight: 1.4 }}>
@@ -214,7 +297,7 @@ function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: 
         );
       })}
 
-      <form action={proxyAction} method={method} id="auth-form">
+      <form onSubmit={handleSubmit} id="auth-form">
         {flow.id && <input type="hidden" name="flow" value={flow.id} />}
 
         {nodes.map((node: FlowNode, i: number) => {
@@ -230,6 +313,8 @@ function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: 
             const value = attrs.value || '';
             const required = attrs.required;
             const placeholder = getPlaceholder(attrs);
+            const fieldErr = getFieldError(name);
+            const borderColor = fieldErr ? '#f43f5e' : '#111';
 
             if (inputType === 'hidden') {
               if (name) {
@@ -239,21 +324,12 @@ function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: 
             }
 
             if (inputType === 'submit') {
-              if (name) {
-                submitContent = (
-                  <button key={i} type="submit" name={name} value={String(value)}
-                    style={{ width: '100%', padding: '12px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, marginTop: 6, cursor: 'pointer' }}>
-                    {labelText || submitLabel}
-                  </button>
-                );
-              } else {
-                submitContent = (
-                  <button key={i} type="submit"
-                    style={{ width: '100%', padding: '12px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, marginTop: 6, cursor: 'pointer' }}>
-                    {labelText || submitLabel}
-                  </button>
-                );
-              }
+              submitContent = (
+                <button key={i} type="submit" name={name} value={String(value)} disabled={submitting}
+                  style={{ width: '100%', padding: '12px 20px', background: submitting ? '#333' : '#fff', color: submitting ? '#666' : '#000', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, marginTop: 6, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                  {submitting ? 'Submitting...' : (labelText || submitLabel)}
+                </button>
+              );
               return null;
             }
 
@@ -272,8 +348,11 @@ function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: 
                   defaultValue={String(value)}
                   placeholder={inputType === 'password' ? 'Enter your password' : placeholder}
                   required={required}
-                  style={{ width: '100%', padding: '12px 14px', background: '#000', border: '1px solid #111', color: '#fff', fontSize: 14, outline: 'none', borderRadius: 4 }}
+                  style={{ width: '100%', padding: '12px 14px', background: '#000', border: `1px solid ${borderColor}`, color: '#fff', fontSize: 14, outline: 'none', borderRadius: 4 }}
                 />
+                {fieldErr && (
+                  <div style={{ color: '#f43f5e', fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>{fieldErr}</div>
+                )}
               </div>
             );
           }
@@ -285,14 +364,17 @@ function AuthForm({ flow, isRegistration }: { flow: KratosFlow; isRegistration: 
           <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'block', fontSize: 11, color: '#555', marginBottom: 6, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 500 }}>Password</label>
             <input type="password" name="password" placeholder="Enter your password" required
-              style={{ width: '100%', padding: '12px 14px', background: '#000', border: '1px solid #111', color: '#fff', fontSize: 14, outline: 'none', borderRadius: 4 }} />
+              style={{ width: '100%', padding: '12px 14px', background: '#000', border: `1px solid ${getFieldError('password') ? '#f43f5e' : '#111'}`, color: '#fff', fontSize: 14, outline: 'none', borderRadius: 4 }} />
+            {getFieldError('password') && (
+              <div style={{ color: '#f43f5e', fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>{getFieldError('password')}</div>
+            )}
           </div>
         )}
 
         {submitContent || (
-          <button type="submit"
-            style={{ width: '100%', padding: '12px 20px', background: '#fff', color: '#000', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, marginTop: 6, cursor: 'pointer' }}>
-            {submitLabel}
+          <button type="submit" disabled={submitting}
+            style={{ width: '100%', padding: '12px 20px', background: submitting ? '#333' : '#fff', color: submitting ? '#666' : '#000', border: 'none', borderRadius: 4, fontSize: 14, fontWeight: 600, marginTop: 6, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+            {submitting ? 'Submitting...' : submitLabel}
           </button>
         )}
       </form>

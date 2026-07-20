@@ -62,6 +62,7 @@ export interface FlowNode {
       text?: string;
     };
   };
+  messages?: { type: string; text: string }[];
 }
 
 export interface KratosFlow {

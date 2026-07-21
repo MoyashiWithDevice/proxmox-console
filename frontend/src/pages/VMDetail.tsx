@@ -60,10 +60,10 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     fetchVM(vmid).then((data) => {
       setVM(data);
       if (!editing) {
-        setName(data.Name || data.Servername || '');
-        setCores(data.Cores || data.CPU || 0);
-        setMem(data.Memory || 0);
-        setHdd(data.HDD || data.Hdd || 0);
+        setName(data.servername || '');
+        setCores(data.cpu || 0);
+        setMem(data.memory || 0);
+        setHdd(data.hdd || 0);
       }
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -91,16 +91,16 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
   async function handleSave() {
     if (!vm?.VMID) return;
     const newHdd = parseInt(String(hdd), 10);
-    if (newHdd < (vm.HDD || vm.Hdd || 0)) {
+    if (newHdd < (vm.hdd || 0)) {
       alert('Cannot decrease disk size');
       return;
     }
 
     const patch: Record<string, unknown> = {};
-    if (name !== (vm.Name || '')) patch.name = name;
-    if (parseInt(String(cores), 10) !== (vm.Cores || vm.CPU || 0)) patch.cores = parseInt(String(cores), 10);
-    if (parseInt(String(mem), 10) !== (vm.Memory || 0)) patch.memory = parseInt(String(mem), 10);
-    if (newHdd !== (vm.HDD || vm.Hdd || 0)) patch.hdd = newHdd;
+    if (name !== (vm.servername || '')) patch.name = name;
+    if (parseInt(String(cores), 10) !== (vm.cpu || 0)) patch.cores = parseInt(String(cores), 10);
+    if (parseInt(String(mem), 10) !== (vm.memory || 0)) patch.memory = parseInt(String(mem), 10);
+    if (newHdd !== (vm.hdd || 0)) patch.hdd = newHdd;
 
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -155,7 +155,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     return <div style={{ fontSize: 13, color: '#333' }}>Loading...</div>;
   }
 
-  const status = (vm.Status || vm.status || 'stopped').toLowerCase();
+  const status = (vm.status || 'stopped').toLowerCase();
 
   return (
     <div style={{ maxWidth: 800 }}>
@@ -186,7 +186,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
           </div>
           {editing ? (
             <div>
-              <button onClick={() => { setEditing(false); if (vm) { setName(vm.Name || ''); setCores(vm.Cores || vm.CPU || 0); setMem(vm.Memory || 0); setHdd(vm.HDD || vm.Hdd || 0); } }}
+              <button onClick={() => { setEditing(false); if (vm) { setName(vm.servername || ''); setCores(vm.cpu || 0); setMem(vm.memory || 0); setHdd(vm.hdd || 0); } }}
                 style={{ marginRight: 8, ...ghostBtn }}>
                 Cancel
               </button>

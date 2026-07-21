@@ -92,14 +92,9 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbVm, err := getVMByProxmoxID(vmid)
+	dbVm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "vm not found")
-		return
-	}
-
-	if dbVm.UserID != dbUserID {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -299,18 +294,13 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID)
+	vm, err := getVMByProxmoxID(req.VMID, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		http.Error(w, "unauthorized", http.StatusForbidden)
 		return
 	}
 
@@ -435,13 +425,9 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
 	}
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		http.Error(w, "vm not found", http.StatusNotFound)
-		return
-	}
-	if vm.UserID != dbUserID {
-		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -649,19 +635,11 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "vm not found",
-		})
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "forbidden",
 		})
 		return
 	}
@@ -720,18 +698,13 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		http.Error(w, "unauthorized", http.StatusForbidden)
 		return
 	}
 
@@ -837,13 +810,9 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 		return "", err
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		return "", err
-	}
-
-	if vm.UserID != dbUserID {
-		return "", fmt.Errorf("unauthorized")
 	}
 
 	return vm.TFWorkdir, nil

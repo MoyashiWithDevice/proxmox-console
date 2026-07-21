@@ -203,11 +203,11 @@ func getVM(vmID int) (*ManageVM, error) {
 	return vm, nil
 }
 
-func getVMByProxmoxID(proxmoxID int) (*ManageVM, error) {
+func getVMByProxmoxID(proxmoxID, userID int) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1",
-		proxmoxID,
+		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1 AND user_id = $2",
+		proxmoxID, userID,
 	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
 
 	if err != nil {

@@ -163,12 +163,12 @@ export function Dashboard() {
           ) : (
             filtered.map((vm) => {
               const vmid = vm.VMID;
-              const name = vm.Name || vm.Servername || 'Unnamed';
-              const status = (vm.Status || vm.status || 'stopped').toLowerCase();
+              const name = vm.servername || 'Unnamed';
+              const status = (vm.status || 'stopped').toLowerCase();
               const ip = vm.IP || '\u2014';
-              const cores = vm.Cores || vm.CPU || 0;
-              const mem = vm.Memory || 0;
-              const hdd = vm.HDD || vm.Hdd || 0;
+              const cores = vm.cpu || 0;
+              const mem = vm.memory || 0;
+              const hdd = vm.hdd || 0;
               const isHover = hovered === vmid;
 
               return (

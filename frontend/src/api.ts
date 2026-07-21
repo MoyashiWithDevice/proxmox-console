@@ -25,7 +25,7 @@ export function fetchJob(id: string): Promise<VM> {
   return api<VM>(`/api/jobs/${id}`);
 }
 
-export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string; runcmd?: string }): Promise<{ job_id: string }> {
+export function createVM(req: { servername: string; os: string; cpu: number; memory: number; hdd: number; username: string; runcmd?: string; iso_volume?: string }): Promise<{ job_id: string }> {
   return api('/api/vms', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,6 +81,21 @@ export function fetchKratosError(id: string): Promise<KratosFlow> {
   return api<KratosFlow>(`${id}`, {
     headers: { 'Accept': 'application/json' },
   });
+}
+
+export function submitAuthFlow(
+  path: string,
+  formData: URLSearchParams
+): Promise<{ redirect_to?: string } | KratosFlow> {
+  return fetch(path, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    credentials: 'include',
+    body: formData.toString(),
+  }).then((r) => r.json());
 }
 
 export function fetchJobs(): Promise<VM[]> {

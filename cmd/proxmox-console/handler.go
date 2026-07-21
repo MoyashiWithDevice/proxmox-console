@@ -57,12 +57,14 @@ func getVMIDAndNode(workdir string) (int, string, error) {
 func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("userVMListHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
 	vms, err := listUserVMs(userID)
 	if err != nil {
+		log.Printf("userVMListHandler: listUserVMs: %v", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -76,24 +78,28 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	vmidStr := r.PathValue("id")
 	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
+		log.Printf("vmDetailGetHandler: invalid vmid: %q", vmidStr)
 		writeJSONError(w, http.StatusBadRequest, "invalid vm id")
 		return
 	}
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("vmDetailGetHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("vmDetailGetHandler: getDatabaseUserID: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	dbVm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
+		log.Printf("vmDetailGetHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		writeJSONError(w, http.StatusNotFound, "vm not found")
 		return
 	}
@@ -101,11 +107,13 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	tfstatePath := filepath.Join(dbVm.TFWorkdir, "terraform.tfstate")
 	b, err := os.ReadFile(tfstatePath)
 	if err != nil {
+		log.Printf("vmDetailGetHandler: read tfstate: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to read vm state")
 		return
 	}
 	var state TFState
 	if err := json.Unmarshal(b, &state); err != nil {
+		log.Printf("vmDetailGetHandler: parse tfstate: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to parse vm state")
 		return
 	}
@@ -154,12 +162,14 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	kratosUserID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("createVMHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var req VMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("createVMHandler: decode request: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -177,34 +187,40 @@ func createVMHandler(w http.ResponseWriter, r *http.Request) {
 func retryVMHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("retryVMHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	jobID := r.PathValue("id")
 	if jobID == "" {
+		log.Printf("retryVMHandler: missing job_id")
 		writeJSONError(w, http.StatusBadRequest, "missing job_id")
 		return
 	}
 
 	jobAny, ok := jobs.Load(jobID)
 	if !ok {
+		log.Printf("retryVMHandler: job not found: %s", jobID)
 		writeJSONError(w, http.StatusNotFound, "job not found")
 		return
 	}
 
 	job := jobAny.(*Job)
 	if job.OwnerID != userID {
+		log.Printf("retryVMHandler: forbidden: job=%s, owner=%s, user=%s", jobID, job.OwnerID, userID)
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	if job.Status != "error" {
+		log.Printf("retryVMHandler: job %s not in error state: %s", jobID, job.Status)
 		writeJSONError(w, http.StatusBadRequest, "job is not in error state")
 		return
 	}
 
 	if job.Request == nil {
+		log.Printf("retryVMHandler: job %s missing original request", jobID)
 		writeJSONError(w, http.StatusBadRequest, "original request not found")
 		return
 	}
@@ -241,17 +257,24 @@ func retryVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // PATCH: /api/vm
 func updateVMHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := getKratosUserIDFromRequest(r)
+	userID, err := getKratosUserIDFromRequest(r)
+	if err != nil {
+		log.Printf("updateVMHandler: getKratosUserIDFromRequest: %v", err)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	vmidStr := r.PathValue("id")
 	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
+		log.Printf("updateVMHandler: invalid vmid: %q", vmidStr)
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
 
 	var req VMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("updateVMHandler: decode request: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -275,6 +298,7 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("deleteVMHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -282,6 +306,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmidStr := r.PathValue("id")
 	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
+		log.Printf("deleteVMHandler: invalid vmid: %q", vmidStr)
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
@@ -290,6 +315,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("deleteVMHandler: getDatabaseUserID: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -297,23 +323,28 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	vm, err := getVMByProxmoxID(req.VMID, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("deleteVMHandler: vm %d not found", req.VMID)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
+		log.Printf("deleteVMHandler: getVMByProxmoxID(%d): %v", req.VMID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := deleteProxmoxVM(context.Background(), vm.NodeName, vm.ProxmoxVMID); err != nil {
+		log.Printf("deleteVMHandler: deleteProxmoxVM(node=%s, vmid=%d): %v", vm.NodeName, vm.ProxmoxVMID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := deleteVMByProxmoxID(req.VMID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("deleteVMHandler: deleteVMByProxmoxID(%d): not found", req.VMID)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
+		log.Printf("deleteVMHandler: deleteVMByProxmoxID(%d): %v", req.VMID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -331,6 +362,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("listJobsHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -358,24 +390,28 @@ func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 func jobDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("id")
 	if jobID == "" {
+		log.Printf("jobDetailGetHandler: missing job id")
 		writeJSONError(w, http.StatusBadRequest, "missing job id")
 		return
 	}
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("jobDetailGetHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	jobAny, ok := jobs.Load(jobID)
 	if !ok {
+		log.Printf("jobDetailGetHandler: job not found: %s", jobID)
 		writeJSONError(w, http.StatusNotFound, "job not found")
 		return
 	}
 
 	job := jobAny.(*Job)
 	if job.OwnerID != userID {
+		log.Printf("jobDetailGetHandler: forbidden: job=%s, owner=%s, user=%s", jobID, job.OwnerID, userID)
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -403,6 +439,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 認証 ──────────────────────────────────────────────────────────────
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("vmTerminalHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -410,11 +447,13 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// ── パラメータ取得 ────────────────────────────────────────────────────
 	vmidStr := r.PathValue("id")
 	if vmidStr == "" {
+		log.Printf("vmTerminalHandler: missing vmid")
 		http.Error(w, "missing vmid", http.StatusBadRequest)
 		return
 	}
 	var vmid int
 	if _, err := fmt.Sscan(vmidStr, &vmid); err != nil || vmid == 0 {
+		log.Printf("vmTerminalHandler: invalid vmid: %q", vmidStr)
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
@@ -422,11 +461,13 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// ── 所有者チェック ────────────────────────────────────────────────────
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("vmTerminalHandler: getDatabaseUserID: %v", err)
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
 	}
 	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
+		log.Printf("vmTerminalHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		http.Error(w, "vm not found", http.StatusNotFound)
 		return
 	}
@@ -434,6 +475,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
 	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vmid)
 	if err != nil || info.IP == "-" {
+		log.Printf("vmTerminalHandler: getProxmoxVMInfo(node=%s, vmid=%d): err=%v, ip=%q", vm.NodeName, vmid, err, info.IP)
 		http.Error(w, "VM IP not available", http.StatusInternalServerError)
 		return
 	}
@@ -447,7 +489,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	sshClient, err := createSSHClient(info.IP, agentUser, privKeyPath)
 	if err != nil {
-		log.Printf("createSSHClient: %v", err)
+		log.Printf("vmTerminalHandler: createSSHClient(ip=%s, user=%s): %v", info.IP, agentUser, err)
 		http.Error(w, "ssh connection failed", http.StatusInternalServerError)
 		return
 	}
@@ -455,7 +497,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 
 	session, err := sshClient.NewSession()
 	if err != nil {
-		log.Printf("NewSession: %v", err)
+		log.Printf("vmTerminalHandler: NewSession: %v", err)
 		http.Error(w, "ssh session failed", http.StatusInternalServerError)
 		return
 	}
@@ -468,7 +510,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		ssh.TTY_OP_OSPEED: 14400,
 	}
 	if err := session.RequestPty("xterm-256color", 40, 80, modes); err != nil {
-		log.Printf("RequestPty: %v", err)
+		log.Printf("vmTerminalHandler: RequestPty: %v", err)
 		http.Error(w, "pty request failed", http.StatusInternalServerError)
 		return
 	}
@@ -476,16 +518,19 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// ── stdin/stdout/stderr パイプ ─────────────────────────────────────────
 	sshIn, err := session.StdinPipe()
 	if err != nil {
+		log.Printf("vmTerminalHandler: StdinPipe: %v", err)
 		http.Error(w, "stdin pipe failed", http.StatusInternalServerError)
 		return
 	}
 	sshOut, err := session.StdoutPipe()
 	if err != nil {
+		log.Printf("vmTerminalHandler: StdoutPipe: %v", err)
 		http.Error(w, "stdout pipe failed", http.StatusInternalServerError)
 		return
 	}
 	sshErr, err := session.StderrPipe()
 	if err != nil {
+		log.Printf("vmTerminalHandler: StderrPipe: %v", err)
 		http.Error(w, "stderr pipe failed", http.StatusInternalServerError)
 		return
 	}
@@ -494,7 +539,7 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	// Shell()を呼ぶだけでインタラクティブシェルが開始される。
 	// Run()やWait()は呼ばない（WebSocketが切れるまで維持するため）。
 	if err := session.Shell(); err != nil {
-		log.Printf("Shell: %v", err)
+		log.Printf("vmTerminalHandler: Shell: %v", err)
 		http.Error(w, "shell start failed", http.StatusInternalServerError)
 		return
 	}
@@ -580,6 +625,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
+		log.Printf("chStateHandler: method not allowed: %s", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "method not allowed",
@@ -589,6 +635,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("chStateHandler: getKratosUserIDFromRequest: %v", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "unauthorized",
@@ -603,6 +650,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	vmidStr := r.PathValue("id")
 	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
+		log.Printf("chStateHandler: invalid vmid: %q", vmidStr)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "invalid vmid",
@@ -611,6 +659,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("chStateHandler: decode request: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "invalid request",
@@ -619,6 +668,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.State != "start" && req.State != "stop" {
+		log.Printf("chStateHandler: invalid state: %q", req.State)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "invalid state",
@@ -628,6 +678,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("chStateHandler: getDatabaseUserID: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "internal",
@@ -637,6 +688,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 
 	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
+		log.Printf("chStateHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "vm not found",
@@ -660,6 +712,7 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		log.Printf("chStateHandler: %s vm %d (node=%s): %v", req.State, vm.ProxmoxVMID, vm.NodeName, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": err.Error(),
@@ -676,24 +729,28 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("vmPrivateKeyHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	vmidStr := r.PathValue("id")
 	if vmidStr == "" {
+		log.Printf("vmPrivateKeyHandler: missing vmid")
 		http.Error(w, "missing vmid", http.StatusBadRequest)
 		return
 	}
 
 	vmid, err := strconv.Atoi(vmidStr)
 	if err != nil {
+		log.Printf("vmPrivateKeyHandler: invalid vmid: %q", vmidStr)
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("vmPrivateKeyHandler: getDatabaseUserID: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -701,9 +758,11 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("vmPrivateKeyHandler: vm %d not found", vmid)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
+		log.Printf("vmPrivateKeyHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -712,9 +771,11 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	keyBytes, err := os.ReadFile(keyPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			log.Printf("vmPrivateKeyHandler: key not available for vm %d: %v", vmid, err)
 			http.Error(w, "key not available", http.StatusNotFound)
 			return
 		}
+		log.Printf("vmPrivateKeyHandler: read key for vm %d: %v", vmid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -897,6 +958,7 @@ func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("settingsAPIHandler: getKratosUserIDFromRequest: %v", err)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -904,6 +966,7 @@ func settingsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var us UserSettings
 		if err := json.NewDecoder(r.Body).Decode(&us); err != nil {
+			log.Printf("settingsAPIHandler: decode request: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -951,24 +1014,28 @@ func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("uploadISOHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("uploadISOHandler: getDatabaseUserID: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxISOSize)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		log.Printf("uploadISOHandler: parse form: %v", err)
 		writeJSONError(w, http.StatusBadRequest, "file too large or invalid form")
 		return
 	}
 
 	file, header, err := r.FormFile("iso")
 	if err != nil {
+		log.Printf("uploadISOHandler: form file: %v", err)
 		writeJSONError(w, http.StatusBadRequest, "missing iso file")
 		return
 	}
@@ -976,6 +1043,7 @@ func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
 
 	filename := header.Filename
 	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		log.Printf("uploadISOHandler: not an ISO: %q", filename)
 		writeJSONError(w, http.StatusBadRequest, "file must be an ISO image")
 		return
 	}
@@ -985,14 +1053,14 @@ func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
 
 	volumeID, err := uploadISOToProxmox(ctx, filename, file, header.Size)
 	if err != nil {
-		log.Printf("ISO upload failed: %v", err)
+		log.Printf("uploadISOHandler: upload to proxmox failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "ISO upload failed: "+err.Error())
 		return
 	}
 
 	iso, err := createISO(dbUserID, filename, volumeID, header.Size)
 	if err != nil {
-		log.Printf("failed to save ISO record: %v", err)
+		log.Printf("uploadISOHandler: createISO: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
 		return
 	}
@@ -1010,18 +1078,21 @@ func uploadISOHandler(w http.ResponseWriter, r *http.Request) {
 // POST /api/iso/download
 func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		log.Printf("downloadISOHandler: method not allowed: %s", r.Method)
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("downloadISOHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("downloadISOHandler: getDatabaseUserID: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -1031,11 +1102,13 @@ func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
 		Filename string `json:"filename,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("downloadISOHandler: decode request: %v", err)
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	if req.URL == "" {
+		log.Printf("downloadISOHandler: missing url")
 		writeJSONError(w, http.StatusBadRequest, "missing url")
 		return
 	}
@@ -1054,14 +1127,14 @@ func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
 
 	volumeID, err := downloadISOFromURL(ctx, req.URL, filename)
 	if err != nil {
-		log.Printf("ISO download failed: %v", err)
+		log.Printf("downloadISOHandler: download failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "ISO download failed: "+err.Error())
 		return
 	}
 
 	iso, err := createISO(dbUserID, filename, volumeID, 0)
 	if err != nil {
-		log.Printf("failed to save ISO record: %v", err)
+		log.Printf("downloadISOHandler: createISO: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to save ISO record")
 		return
 	}
@@ -1079,24 +1152,28 @@ func downloadISOHandler(w http.ResponseWriter, r *http.Request) {
 // GET /api/isos
 func listISOsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		log.Printf("listISOsHandler: method not allowed: %s", r.Method)
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
 	userID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
+		log.Printf("listISOsHandler: getKratosUserIDFromRequest: %v", err)
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
+		log.Printf("listISOsHandler: getDatabaseUserID: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	isos, err := getUserISOs(dbUserID)
 	if err != nil {
+		log.Printf("listISOsHandler: getUserISOs: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "failed to list ISOs")
 		return
 	}

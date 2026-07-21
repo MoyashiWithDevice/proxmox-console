@@ -41,9 +41,11 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 			return
 		}
 
+		acceptsJSON := strings.Contains(r.Header.Get("Accept"), "application/json")
+
 		// 登録は 2 段階 (traits.email → password) を 1 リクエストにまとめる
 		if flowType == "registration" {
-			handleCombinedRegistration(w, r)
+			handleCombinedRegistration(w, r, acceptsJSON)
 			return
 		}
 
@@ -87,20 +89,59 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 			w.Header().Add("Set-Cookie", c)
 		}
 
-		// 成功 (303/302/200) → / へリダイレクト
-		if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusOK {
-			log.Printf("[proxy] %s success, redirecting to /", flowType)
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+		// 200 → 成功（flow 完了）
+		if resp.StatusCode == http.StatusOK {
+			log.Printf("[proxy] %s success (200), redirecting to /", flowType)
+			if acceptsJSON {
+				writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/"})
+			} else {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			}
 			return
 		}
 
-		// エラー (422 等) → Kratos の flow JSON を取得してフォーム再描画
-		log.Printf("[proxy] %s error, status=%d, re-rendering form", flowType, resp.StatusCode)
+		// 303/302 → Location に ?flow= があればエラー、なければ成功
+		if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusFound {
+			location := resp.Header.Get("Location")
+			log.Printf("[proxy] %s got redirect to %s", flowType, location)
+
+			// ?flow= を含む → エラー: Kratos がエラーフローの UI URL へリダイレクト
+			if strings.Contains(location, "?flow=") || strings.Contains(location, "&flow=") {
+				log.Printf("[proxy] %s auth error, location=%s", flowType, location)
+				fid := extractFlowIDFromLocation(location)
+				if fid != "" {
+					flow, err := fetchKratosFlow("/self-service/"+flowType+"/flows?id="+fid, r)
+					if err == nil {
+						respondWithFlowOrHTML(w, r, flow, http.StatusUnprocessableEntity, acceptsJSON)
+						return
+					}
+				}
+				// fallback: エラーフローページへ
+				if acceptsJSON {
+					writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/" + flowType + "?flow=" + fid})
+				} else {
+					http.Redirect(w, r, location, http.StatusSeeOther)
+				}
+				return
+			}
+
+			// ?flow= なし → 成功
+			log.Printf("[proxy] %s auth success", flowType)
+			if acceptsJSON {
+				writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/"})
+			} else {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			}
+			return
+		}
+
+		// エラー (422 等) → Kratos の flow JSON を返してフォームにエラー表示
+		log.Printf("[proxy] %s error, status=%d, returning flow", flowType, resp.StatusCode)
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
 		var flowData map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &flowData); err == nil {
-			serveSPAWithFlow(w, flowData)
+			respondWithFlowOrHTML(w, r, flowData, resp.StatusCode, acceptsJSON)
 			return
 		}
 
@@ -118,7 +159,7 @@ func proxyAuthHandler(flowType string) http.HandlerFunc {
 // 3. Kratos に password + method=password を送信
 // 4. 両方成功したら自動ログインして / へリダイレクト
 // 5. いずれかでエラーがあればフォームを再描画
-func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
+func handleCombinedRegistration(w http.ResponseWriter, r *http.Request, acceptsJSON bool) {
 	log.Printf("[combined-reg] start: flow=%s, email=%s",
 		r.FormValue("flow"), r.FormValue("traits.email"))
 
@@ -170,7 +211,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 	if resp1.StatusCode != http.StatusSeeOther && resp1.StatusCode != http.StatusFound && resp1.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp1.Body)
 		log.Printf("[combined-reg] step1 error, body=%s", string(bodyBytes))
-		tryRenderAuthForm(w, bodyBytes, true)
+		tryRenderAuthForm(w, r, bodyBytes, acceptsJSON)
 		return
 	}
 
@@ -184,7 +225,7 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 
 	if hasFlowErrors(flow2) {
 		log.Printf("[combined-reg] step2 flow has errors")
-		serveSPAWithFlow(w, flow2)
+		respondWithFlowOrHTML(w, r, flow2, http.StatusUnprocessableEntity, acceptsJSON)
 		return
 	}
 
@@ -213,24 +254,81 @@ func handleCombinedRegistration(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[combined-reg] step2 response status=%d", resp2.StatusCode)
 
-	// Step 2 成功 → 自動ログインして / へリダイレクト
-	if resp2.StatusCode == http.StatusSeeOther || resp2.StatusCode == http.StatusFound || resp2.StatusCode == http.StatusOK {
+	// Step 2 応答処理
+	// 200 → 成功（flow 完了）
+	if resp2.StatusCode == http.StatusOK {
+		log.Printf("[combined-reg] step2 success (200)")
 		sessionCookie, err := performKratosLogin(email, password)
 		if err == nil {
 			log.Printf("[combined-reg] post-reg login OK, setting session cookie")
 			http.SetCookie(w, sessionCookie)
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			if acceptsJSON {
+				writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/"})
+			} else {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			}
 			return
 		}
 		log.Printf("[combined-reg] post-reg login failed: %v, redirecting to /login", err)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		if acceptsJSON {
+			writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/login"})
+		} else {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
+		return
+	}
+
+	// 303/302 → Location に ?flow= があればエラー、なければ成功
+	if resp2.StatusCode == http.StatusSeeOther || resp2.StatusCode == http.StatusFound {
+		location := resp2.Header.Get("Location")
+		log.Printf("[combined-reg] step2 redirect to %s", location)
+
+		// ?flow= を含む → エラー: Kratos がエラーフローの UI URL へリダイレクト
+		if strings.Contains(location, "?flow=") || strings.Contains(location, "&flow=") {
+			log.Printf("[combined-reg] step2 auth error, location=%s", location)
+			fid := extractFlowIDFromLocation(location)
+			if fid != "" {
+				flow, err := fetchKratosFlow("/self-service/registration/flows?id="+fid, r)
+				if err == nil {
+					respondWithFlowOrHTML(w, r, flow, http.StatusUnprocessableEntity, acceptsJSON)
+					return
+				}
+			}
+			// fallback
+			if acceptsJSON {
+				writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/registration?flow=" + url.QueryEscape(fid)})
+			} else {
+				http.Redirect(w, r, location, http.StatusSeeOther)
+			}
+			return
+		}
+
+		// ?flow= なし → 成功
+		log.Printf("[combined-reg] step2 auth success")
+		sessionCookie, err := performKratosLogin(email, password)
+		if err == nil {
+			log.Printf("[combined-reg] post-reg login OK, setting session cookie")
+			http.SetCookie(w, sessionCookie)
+			if acceptsJSON {
+				writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/"})
+			} else {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			}
+			return
+		}
+		log.Printf("[combined-reg] post-reg login failed: %v, redirecting to /login", err)
+		if acceptsJSON {
+			writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/login"})
+		} else {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
 		return
 	}
 
 	// Step 2 エラー → フォーム再描画
 	bodyBytes, _ := io.ReadAll(resp2.Body)
 	log.Printf("[combined-reg] step2 error, body=%s", string(bodyBytes))
-	tryRenderAuthForm(w, bodyBytes, true)
+	tryRenderAuthForm(w, r, bodyBytes, acceptsJSON)
 }
 
 // ── ヘルパー関数 ──
@@ -401,11 +499,36 @@ func performKratosLogin(email, password string) (*http.Cookie, error) {
 
 // tryRenderAuthForm は Kratos から返されたエラーレスポンス (flow JSON または raw body)
 // をパースしてフロントエンド SPA を描画する。
-func tryRenderAuthForm(w http.ResponseWriter, bodyBytes []byte, isRegistration bool) {
+func tryRenderAuthForm(w http.ResponseWriter, r *http.Request, bodyBytes []byte, acceptsJSON bool) {
 	var flowData map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &flowData); err == nil {
-		serveSPAWithFlow(w, flowData)
+		respondWithFlowOrHTML(w, r, flowData, http.StatusUnprocessableEntity, acceptsJSON)
 	} else {
 		http.Error(w, "authentication failed", http.StatusInternalServerError)
 	}
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(v)
+}
+
+func respondWithFlowOrHTML(w http.ResponseWriter, r *http.Request, flowData map[string]interface{}, statusCode int, acceptsJSON bool) {
+	if acceptsJSON {
+		writeJSON(w, statusCode, flowData)
+		return
+	}
+	if statusCode >= 400 {
+		w.WriteHeader(statusCode)
+	}
+	serveSPAWithFlow(w, flowData)
+}
+
+func extractFlowIDFromLocation(location string) string {
+	u, err := url.Parse(location)
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get("flow")
 }

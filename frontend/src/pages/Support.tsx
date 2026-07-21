@@ -83,7 +83,7 @@ export function Support() {
             <option value="">No VM selected</option>
             {vms.map((vm) => (
               <option key={vm.VMID} value={vm.VMID}>
-                {vm.VMID} — {vm.Name || 'Unnamed'}
+                {vm.VMID} — {vm.servername || 'Unnamed'}
               </option>
             ))}
           </select>

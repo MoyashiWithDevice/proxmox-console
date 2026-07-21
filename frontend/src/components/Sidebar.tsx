@@ -104,7 +104,7 @@ export function Sidebar() {
               {vms.map((v) => (
                 <Item
                   key={v.VMID}
-                  label={v.Name || `VM ${v.VMID}`}
+                  label={v.servername || `VM ${v.VMID}`}
                   status={v.Status || v.status || 'unknown'}
                   active={String(v.VMID) === currentID && isVMPage}
                   depth={1}

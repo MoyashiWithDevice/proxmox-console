@@ -60,7 +60,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     fetchVM(vmid).then((data) => {
       setVM(data);
       if (!editing) {
-        setName(data.Name || data.Servername || '');
+        setName(data.servername || '');
         setCores(data.Cores || data.CPU || 0);
         setMem(data.Memory || 0);
         setHdd(data.HDD || data.Hdd || 0);

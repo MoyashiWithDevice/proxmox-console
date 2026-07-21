@@ -163,7 +163,7 @@ export function Dashboard() {
           ) : (
             filtered.map((vm) => {
               const vmid = vm.VMID;
-              const name = vm.Name || vm.Servername || 'Unnamed';
+              const name = vm.servername || 'Unnamed';
               const status = (vm.Status || vm.status || 'stopped').toLowerCase();
               const ip = vm.IP || '\u2014';
               const cores = vm.Cores || vm.CPU || 0;

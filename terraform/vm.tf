@@ -33,7 +33,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
         address = "dhcp"
       }
     }
-
     user_data_file_id = proxmox_virtual_environment_file.cloudcfg.id
   }
 

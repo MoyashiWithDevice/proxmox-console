@@ -1,4 +1,5 @@
 #cloud-config
+hostname: ${servername}
 ssh_pwauth: false
 
 users:

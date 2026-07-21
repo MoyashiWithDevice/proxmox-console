@@ -110,6 +110,7 @@ func runTerraformJob(jobID string, req *VMRequest, httpreq *http.Request) {
 		failJob(jobID, "Error creating key:", err)
 		return
 	}
+	userPubkey = []byte(strings.TrimSpace(string(userPubkey)))
 
 	agentUser := SettingsConf.Agent.User
 	if agentUser == "" {

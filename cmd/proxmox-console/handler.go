@@ -97,16 +97,10 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbVm, err := getVMByProxmoxID(vmid)
+	dbVm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		log.Printf("vmDetailGetHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		writeJSONError(w, http.StatusNotFound, "vm not found")
-		return
-	}
-
-	if dbVm.UserID != dbUserID {
-		log.Printf("vmDetailGetHandler: forbidden: vmid=%d, vmUser=%d, dbUser=%d", vmid, dbVm.UserID, dbUserID)
-		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -326,7 +320,7 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID)
+	vm, err := getVMByProxmoxID(req.VMID, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("deleteVMHandler: vm %d not found", req.VMID)
@@ -335,12 +329,6 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("deleteVMHandler: getVMByProxmoxID(%d): %v", req.VMID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		log.Printf("deleteVMHandler: forbidden: vmid=%d, vmUser=%d, dbUser=%d", req.VMID, vm.UserID, dbUserID)
-		http.Error(w, "unauthorized", http.StatusForbidden)
 		return
 	}
 
@@ -477,15 +465,10 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
 	}
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		log.Printf("vmTerminalHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		http.Error(w, "vm not found", http.StatusNotFound)
-		return
-	}
-	if vm.UserID != dbUserID {
-		log.Printf("vmTerminalHandler: forbidden: vmid=%d, vmUser=%d, dbUser=%d", vmid, vm.UserID, dbUserID)
-		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -703,21 +686,12 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		log.Printf("chStateHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "vm not found",
-		})
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		log.Printf("chStateHandler: forbidden: vmid=%d, vmUser=%d, dbUser=%d", vmid, vm.UserID, dbUserID)
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "forbidden",
 		})
 		return
 	}
@@ -781,7 +755,7 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("vmPrivateKeyHandler: vm %d not found", vmid)
@@ -790,12 +764,6 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("vmPrivateKeyHandler: getVMByProxmoxID(%d): %v", vmid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if vm.UserID != dbUserID {
-		log.Printf("vmPrivateKeyHandler: forbidden: vmid=%d, vmUser=%d, dbUser=%d", vmid, vm.UserID, dbUserID)
-		http.Error(w, "unauthorized", http.StatusForbidden)
 		return
 	}
 
@@ -903,13 +871,9 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 		return "", err
 	}
 
-	vm, err := getVMByProxmoxID(vmid)
+	vm, err := getVMByProxmoxID(vmid, dbUserID)
 	if err != nil {
 		return "", err
-	}
-
-	if vm.UserID != dbUserID {
-		return "", fmt.Errorf("unauthorized")
 	}
 
 	return vm.TFWorkdir, nil

@@ -48,10 +48,17 @@ export function TerminalPage() {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${proto}//${window.location.host}/api/vms/${encodeURIComponent(vmid)}/terminal`;
       const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
 
       ws.onopen = () => { term.focus(); };
-      ws.onmessage = (e) => { term.write(e.data); };
+      ws.onmessage = (e) => {
+        if (e.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(e.data));
+        } else {
+          term.write(e.data);
+        }
+      };
       ws.onclose = () => { term.write('\r\n\x1b[31mConnection closed.\x1b[0m'); };
       ws.onerror = () => { term.write('\r\n\x1b[31mConnection error.\x1b[0m'); };
     }
@@ -64,7 +71,17 @@ export function TerminalPage() {
       }
     });
 
-    const handleResize = () => { fitAddon.fit(); };
+    const handleResize = () => {
+      fitAddon.fit();
+      const dims = fitAddon.proposeDimensions();
+      if (dims && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'resize',
+          cols: dims.cols,
+          rows: dims.rows,
+        }));
+      }
+    };
     window.addEventListener('resize', handleResize);
 
     return () => {

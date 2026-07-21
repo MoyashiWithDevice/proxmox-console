@@ -3,21 +3,19 @@ export type StatusType = 'running' | 'stopped' | 'paused';
 export interface VM {
   type: 'vm' | 'job';
   VMID?: number;
-  CPU?: number;
-  Memory?: number;
-  HDD?: number;
-  Servername?: string;
+  cpu?: number;
+  memory?: number;
+  hdd?: number;
+  servername?: string;
   Name?: string;
+  Servername?: string;
   OS?: string;
+  status?: string;
   Status?: string;
   IP?: string;
   JOBID?: string;
-  status?: string;
-  servername?: string;
   job_id?: string;
   vmid?: number;
-  Cores?: number;
-  Hdd?: number;
   id?: string;
   log?: string;
 }

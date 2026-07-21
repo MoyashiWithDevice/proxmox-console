@@ -205,8 +205,8 @@ cloudinit_id  = "%s"
 		return
 	}
 
-	// cloudinit ファイルは不要になったので削除
-	deleteCloudInitFile(ctx, nodeName, cloudinitID)
+	// cloudinit ファイルは不要になったので削除 + cicustom 参照を解除
+	deleteCloudInitFile(ctx, nodeName, cloudinitID, vmID)
 
 	// DB に VM を記録
 	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)

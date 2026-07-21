@@ -94,6 +94,9 @@ func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 		if err := task.WaitFor(ctx, 30); err != nil {
 			return fmt.Errorf("failed to wait for proxmox vm stop: %w", err)
 		}
+		if task.ExitStatus != "OK" {
+			return fmt.Errorf("proxmox stop task failed: %s", task.ExitStatus)
+		}
 	}
 
 	task, err := vm.Delete(ctx)
@@ -103,77 +106,86 @@ func deleteProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
 	if err := task.WaitFor(ctx, 60); err != nil {
 		return fmt.Errorf("failed to wait for proxmox vm delete: %w", err)
 	}
+	if task.ExitStatus != "OK" {
+		return fmt.Errorf("proxmox delete task failed: %s", task.ExitStatus)
+	}
 
 	return nil
 }
 
 // startProxmoxVM は Proxmox 上の VM を起動します（非同期）
 func startProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
-	go func() {
-		client, err := getProxmoxClient()
-		if err != nil {
-			fmt.Printf("Failed to create proxmox client: %v\n", err)
-			return
-		}
+	client, err := getProxmoxClient()
+	if err != nil {
+		log.Printf("Failed to create proxmox client: %v", err)
+		return err
+	}
 
-		node, err := client.Node(context.Background(), nodeName)
-		if err != nil {
-			fmt.Printf("Failed to get proxmox node: %v\n", err)
-			return
-		}
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		log.Printf("Failed to get proxmox node: %v", err)
+		return err
+	}
 
-		vm, err := node.VirtualMachine(context.Background(), vmid)
-		if err != nil {
-			fmt.Printf("Failed to get proxmox vm: %v\n", err)
-			return
-		}
+	vm, err := node.VirtualMachine(ctx, vmid)
+	if err != nil {
+		log.Printf("Failed to get proxmox vm: %v", err)
+		return err
+	}
 
-		task, err := vm.Start(context.Background())
-		if err != nil {
-			fmt.Printf("Failed to start proxmox vm: %v\n", err)
-			return
-		}
-		if err := task.WaitFor(context.Background(), 60); err != nil {
-			fmt.Printf("Failed to wait for proxmox vm start: %v\n", err)
-			return
-		}
-		fmt.Printf("Successfully started VM %d\n", vmid)
-	}()
+	task, err := vm.Start(ctx)
+	if err != nil {
+		log.Printf("Failed to start proxmox vm: %v", err)
+		return err
+	}
+	if err := task.WaitFor(ctx, 60); err != nil {
+		log.Printf("Failed to wait for proxmox vm start: %v", err)
+		return err
+	}
+	if task.ExitStatus != "OK" {
+		err := fmt.Errorf("proxmox start task failed: %s", task.ExitStatus)
+		log.Print(err.Error())
+		return err
+	}
+	log.Printf("Successfully started VM %d", vmid)
 	return nil
 }
 
 // stopProxmoxVM は Proxmox 上の VM を停止します（非同期）
 func stopProxmoxVM(ctx context.Context, nodeName string, vmid int) error {
-	go func() {
-		client, err := getProxmoxClient()
-		if err != nil {
-			fmt.Printf("Failed to create proxmox client: %v\n", err)
-			return
-		}
+	client, err := getProxmoxClient()
+	if err != nil {
+		log.Printf("Failed to create proxmox client: %v", err)
+		return err
+	}
 
-		node, err := client.Node(context.Background(), nodeName)
-		if err != nil {
-			fmt.Printf("Failed to get proxmox node: %v\n", err)
-			return
-		}
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		log.Printf("Failed to get proxmox node: %v", err)
+		return err
+	}
 
-		vm, err := node.VirtualMachine(context.Background(), vmid)
-		if err != nil {
-			fmt.Printf("Failed to get proxmox vm: %v\n", err)
-			return
-		}
+	vm, err := node.VirtualMachine(ctx, vmid)
+	if err != nil {
+		log.Printf("Failed to get proxmox vm: %v", err)
+		return err
+	}
 
-		task, err := vm.Stop(context.Background())
-		if err != nil {
-			fmt.Printf("Failed to stop proxmox vm: %v\n", err)
-			return
-		}
-		if err := task.WaitFor(context.Background(), 60); err != nil {
-			fmt.Printf("Failed to wait for proxmox vm stop: %v\n", err)
-			return
-		}
-		fmt.Printf("Successfully stopped VM %d\n", vmid)
-	}()
+	task, err := vm.Stop(ctx)
+	if err != nil {
+		log.Printf("Failed to stop proxmox vm: %v", err)
+		return err
+	}
+	if err := task.WaitFor(ctx, 60); err != nil {
+		log.Printf("Failed to wait for proxmox vm stop: %v", err)
+		return err
+	}
+	if task.ExitStatus != "OK" {
+		err := fmt.Errorf("proxmox stop task failed: %s", task.ExitStatus)
+		log.Print(err.Error())
+		return err
+	}
+	log.Printf("Successfully stopped VM %d", vmid)
 	return nil
 }
 
@@ -227,6 +239,9 @@ func uploadISOToProxmox(ctx context.Context, filename string, file io.Reader, fi
 	if err := task.WaitFor(ctx, 300); err != nil {
 		return "", fmt.Errorf("failed to wait for iso upload: %w", err)
 	}
+	if task.ExitStatus != "OK" {
+		return "", fmt.Errorf("iso upload task failed: %s", task.ExitStatus)
+	}
 
 	volumeID := fmt.Sprintf("%s:iso/%s", storage.Name, filename)
 	return volumeID, nil
@@ -268,12 +283,15 @@ func downloadISOFromURL(ctx context.Context, urlStr, filename string) (string, e
 	if err := task.WaitFor(ctx, 600); err != nil {
 		return "", fmt.Errorf("failed to wait for iso download: %w", err)
 	}
+	if task.ExitStatus != "OK" {
+		return "", fmt.Errorf("iso download task failed: %s", task.ExitStatus)
+	}
 
 	volumeID := fmt.Sprintf("%s:iso/%s", storage.Name, filename)
 	return volumeID, nil
 }
 
-func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string) {
+func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string, vmid int) {
 	client, err := getProxmoxClient()
 	if err != nil {
 		log.Printf("Warning: deleteCloudInitFile: %v", err)
@@ -295,4 +313,15 @@ func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string) {
 		return
 	}
 	log.Printf("Cleaned up cloudinit file: %s", volID)
+
+	vm, err := node.VirtualMachine(ctx, vmid)
+	if err != nil {
+		log.Printf("Warning: failed to get VM for cicustom unset: %v", err)
+		return
+	}
+	if err := vm.ConfigSync(ctx, goProxmox.VirtualMachineOption{Name: "delete", Value: "cicustom"}); err != nil {
+		log.Printf("Warning: failed to unset cicustom for VM %d: %v", vmid, err)
+		return
+	}
+	log.Printf("Unset cicustom for VM %d", vmid)
 }

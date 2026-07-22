@@ -75,7 +75,8 @@ function VMDetailView({ uuid }: { uuid: string }) {
     return () => clearInterval(interval);
   }, [loadVM]);
 
-  async function handleToggleVM(uuid: string, action: 'start' | 'stop') {
+  async function handleToggleVM(uuid: string | undefined, action: 'start' | 'stop') {
+    if (!uuid) return;
     if (action === 'stop' && !confirm('Stop this VM?')) return;
     try {
       await changeVMState(uuid, action);
@@ -161,7 +162,7 @@ function VMDetailView({ uuid }: { uuid: string }) {
     <div style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 28, alignItems: 'center' }}>
         <button
-          onClick={() => window.open(`/terminal?vmid=${vm.uuid}`, '_blank', 'noopener,noreferrer')}
+          onClick={() => { if (vm?.uuid) window.open(`/terminal?vmid=${vm.uuid}`, '_blank', 'noopener,noreferrer'); }}
           style={ghostBtn}
         >
           <Icon name="terminal" size={12} color="#444" /> Terminal

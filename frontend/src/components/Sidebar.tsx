@@ -116,7 +116,7 @@ export function Sidebar() {
                   status={v.Status || v.status || 'unknown'}
                   active={v.uuid === currentID && isVMPage}
                   depth={1}
-                  onClick={() => navigate(`/vm?id=${v.uuid}`)}
+                  onClick={() => { if (v.uuid) navigate(`/vm?id=${v.uuid}`); }}
                 />
               ))}
               {jobs.map((j) => {

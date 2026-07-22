@@ -118,6 +118,7 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vm := VMResponse{
+		UUID:   dbVm.UUID,
 		VMID:   dbVm.ProxmoxVMID,
 		Status: dbVm.Status,
 		IP:     "-",
@@ -387,6 +388,7 @@ func listJobsHandler(w http.ResponseWriter, r *http.Request) {
 			Status:     j.Status,
 			Servername: j.Servername,
 			IP:         j.IP,
+			UUID:       j.UUID,
 		})
 		return true
 	})

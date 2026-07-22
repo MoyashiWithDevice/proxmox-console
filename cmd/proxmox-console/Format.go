@@ -13,7 +13,7 @@ type VMRequest struct {
 }
 
 type VMResponse struct {
-	UUID       string `json:"uuid,omitempty"`
+	UUID       string `json:"uuid"`
 	VMID       int    `json:"VMID,omitempty"`
 	CPU        int    `json:"cpu,omitempty"`
 	Memory     int    `json:"memory,omitempty"`

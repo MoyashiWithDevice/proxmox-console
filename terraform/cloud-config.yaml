@@ -22,8 +22,13 @@ users:
 chpasswd:
   expire: false
 
-%{ if runcmd != "" ~}
 runcmd:
+  # === machine-id の重複（IP重複）を防止する処理を追加 ===
+  - rm -f /etc/machine-id /var/lib/dbus/machine-id
+  - systemd-machine-id-setup
+  - ln -sf /etc/machine-id /var/lib/dbus/machine-id
+  - netplan apply
+%{ if runcmd != "" ~}
 %{ for cmd in split("\n", runcmd) ~}
   - ${cmd}
 %{ endfor ~}

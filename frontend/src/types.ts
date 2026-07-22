@@ -2,6 +2,7 @@ export type StatusType = 'running' | 'stopped' | 'paused';
 
 export interface VM {
   type: 'vm' | 'job';
+  uuid: string;
   VMID?: number;
   cpu?: number;
   memory?: number;

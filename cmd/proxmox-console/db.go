@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS vms (
     id             SERIAL      PRIMARY KEY,
     user_id        INTEGER     NOT NULL REFERENCES users(id),
+    uuid           TEXT        NOT NULL UNIQUE,
     proxmox_vm_id  INTEGER     NOT NULL,
     node_name      TEXT        NOT NULL,
     tf_workdir     TEXT        NOT NULL,
@@ -98,6 +99,17 @@ CREATE TABLE IF NOT EXISTS isos (
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("failed to execute schema SQL: %w", err)
 	}
+
+	migrationSQL := `
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS uuid TEXT;
+UPDATE vms SET uuid = gen_random_uuid()::text WHERE uuid IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vms_uuid ON vms (uuid);
+ALTER TABLE vms ALTER COLUMN uuid SET NOT NULL;
+`
+	if _, err := db.Exec(migrationSQL); err != nil {
+		return fmt.Errorf("failed to execute migration SQL: %w", err)
+	}
+
 	return nil
 }
 
@@ -113,6 +125,7 @@ type User struct {
 type ManageVM struct {
 	ID          int
 	UserID      int
+	UUID        string
 	ProxmoxVMID int
 	NodeName    string
 	TFWorkdir   string
@@ -147,12 +160,12 @@ func getOrCreateUser(kratosID string) (*User, error) {
 }
 
 // createVM はVM情報をデータベースに保存します
-func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*ManageVM, error) {
+func createVM(userID int, uuid string, proxmoxVMID int, nodeName string, tfWorkdir string) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"INSERT INTO vms (user_id, proxmox_vm_id, node_name, tf_workdir, status) VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at",
-		userID, proxmoxVMID, nodeName, tfWorkdir, "creating",
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+		"INSERT INTO vms (user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status, created_at",
+		userID, uuid, proxmoxVMID, nodeName, tfWorkdir, "creating",
+	).Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vm: %w", err)
@@ -164,7 +177,7 @@ func createVM(userID int, proxmoxVMID int, nodeName string, tfWorkdir string) (*
 // getUserVMs はユーザーのVMリストを取得します
 func getUserVMs(userID int) ([]*ManageVM, error) {
 	rows, err := db.Query(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE user_id = $1 ORDER BY created_at DESC",
+		"SELECT id, user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE user_id = $1 ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -175,7 +188,7 @@ func getUserVMs(userID int) ([]*ManageVM, error) {
 	var vms []*ManageVM
 	for rows.Next() {
 		vm := &ManageVM{}
-		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt); err != nil {
+		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan vm: %w", err)
 		}
 		vms = append(vms, vm)
@@ -192,9 +205,9 @@ func getUserVMs(userID int) ([]*ManageVM, error) {
 func getVM(vmID int) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE id = $1",
+		"SELECT id, user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE id = $1",
 		vmID,
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+	).Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm: %w", err)
@@ -206,9 +219,9 @@ func getVM(vmID int) (*ManageVM, error) {
 func getVMByProxmoxID(proxmoxID, userID int) (*ManageVM, error) {
 	vm := &ManageVM{}
 	err := db.QueryRow(
-		"SELECT id, user_id, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1 AND user_id = $2",
+		"SELECT id, user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE proxmox_vm_id = $1 AND user_id = $2",
 		proxmoxID, userID,
-	).Scan(&vm.ID, &vm.UserID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+	).Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm: %w", err)
@@ -217,10 +230,24 @@ func getVMByProxmoxID(proxmoxID, userID int) (*ManageVM, error) {
 	return vm, nil
 }
 
-func deleteVMByProxmoxID(proxmoxID int) error {
+func getVMByUUID(uuid string, userID int) (*ManageVM, error) {
+	vm := &ManageVM{}
+	err := db.QueryRow(
+		"SELECT id, user_id, uuid, proxmox_vm_id, node_name, tf_workdir, status, created_at FROM vms WHERE uuid = $1 AND user_id = $2",
+		uuid, userID,
+	).Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm by uuid: %w", err)
+	}
+
+	return vm, nil
+}
+
+func deleteVMByUUID(uuid string, userID int) error {
 	result, err := db.Exec(
-		"DELETE FROM vms WHERE proxmox_vm_id = $1",
-		proxmoxID,
+		"DELETE FROM vms WHERE uuid = $1 AND user_id = $2",
+		uuid, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to delete vm: %w", err)

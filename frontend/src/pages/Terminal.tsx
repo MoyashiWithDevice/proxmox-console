@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 
 export function TerminalPage() {
   const [searchParams] = useSearchParams();
-  const vmid = searchParams.get('vmid') || '';
+  const uuid = searchParams.get('vmid') || searchParams.get('id') || '';
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -46,7 +46,7 @@ export function TerminalPage() {
 
     function connect() {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${proto}//${window.location.host}/api/vms/${encodeURIComponent(vmid)}/terminal`;
+      const wsUrl = `${proto}//${window.location.host}/api/vms/${encodeURIComponent(uuid)}/terminal`;
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
@@ -91,18 +91,18 @@ export function TerminalPage() {
         wsRef.current.close();
       }
     };
-  }, [vmid]);
+  }, [uuid]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', height: 44, background: '#000', borderBottom: '1px solid #111', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: '#aaa' }}>Terminal</span>
-          <span style={{ fontSize: 11, color: '#444' }}>VM {vmid}</span>
+          <span style={{ fontSize: 11, color: '#444' }}>VM {uuid}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            onClick={() => { window.location.href = `/vm?id=${vmid}`; }}
+            onClick={() => { window.location.href = `/vm?id=${uuid}`; }}
             style={{ background: 'none', border: '1px solid #111', color: '#444', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
           >
             Back

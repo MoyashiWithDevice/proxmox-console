@@ -75,10 +75,9 @@ func userVMListHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET: /api/vms/{id}
 func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
-	vmidStr := r.PathValue("id")
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		log.Printf("vmDetailGetHandler: invalid vmid: %q", vmidStr)
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("vmDetailGetHandler: missing uuid")
 		writeJSONError(w, http.StatusBadRequest, "invalid vm id")
 		return
 	}
@@ -97,9 +96,9 @@ func vmDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbVm, err := getVMByProxmoxID(vmid, dbUserID)
+	dbVm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
-		log.Printf("vmDetailGetHandler: getVMByProxmoxID(%d): %v", vmid, err)
+		log.Printf("vmDetailGetHandler: getVMByUUID(%s): %v", uuid, err)
 		writeJSONError(w, http.StatusNotFound, "vm not found")
 		return
 	}
@@ -264,11 +263,24 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vmidStr := r.PathValue("id")
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		log.Printf("updateVMHandler: invalid vmid: %q", vmidStr)
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("updateVMHandler: missing uuid")
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
+		return
+	}
+
+	dbUserID, err := getDatabaseUserID(userID)
+	if err != nil {
+		log.Printf("updateVMHandler: getDatabaseUserID: %v", err)
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+
+	vm, err := getVMByUUID(uuid, dbUserID)
+	if err != nil {
+		log.Printf("updateVMHandler: getVMByUUID(%s): %v", uuid, err)
+		http.Error(w, "vm not found", http.StatusNotFound)
 		return
 	}
 
@@ -278,13 +290,13 @@ func updateVMHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	req.VMID = vmid
+	req.VMID = vm.ProxmoxVMID
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: userID, VMID: req.VMID})
+	jobs.Store(jobID, &Job{Status: "running", Servername: req.Servername, OwnerID: userID, VMID: vm.ProxmoxVMID, UUID: uuid})
 
 	// Run VM update in background
-	go runUpdateVMJob(jobID, userID, req)
+	go runUpdateVMJob(jobID, userID, uuid, req)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -303,15 +315,12 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vmidStr := r.PathValue("id")
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		log.Printf("deleteVMHandler: invalid vmid: %q", vmidStr)
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("deleteVMHandler: missing uuid")
 		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
-
-	req := VMRequest{VMID: vmid}
 
 	dbUserID, err := getDatabaseUserID(userID)
 	if err != nil {
@@ -320,14 +329,14 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(req.VMID, dbUserID)
+	vm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			log.Printf("deleteVMHandler: vm %d not found", req.VMID)
+			log.Printf("deleteVMHandler: vm %s not found", uuid)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
-		log.Printf("deleteVMHandler: getVMByProxmoxID(%d): %v", req.VMID, err)
+		log.Printf("deleteVMHandler: getVMByUUID(%s): %v", uuid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -338,13 +347,13 @@ func deleteVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := deleteVMByProxmoxID(req.VMID); err != nil {
+	if err := deleteVMByUUID(uuid, dbUserID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			log.Printf("deleteVMHandler: deleteVMByProxmoxID(%d): not found", req.VMID)
+			log.Printf("deleteVMHandler: deleteVMByUUID(%s): not found", uuid)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
-		log.Printf("deleteVMHandler: deleteVMByProxmoxID(%d): %v", req.VMID, err)
+		log.Printf("deleteVMHandler: deleteVMByUUID(%s): %v", uuid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -428,6 +437,7 @@ func jobDetailGetHandler(w http.ResponseWriter, r *http.Request) {
 		IP:         job.IP,
 		Log:        job.Log,
 		VMID:       job.VMID,
+		UUID:       job.UUID,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -445,16 +455,10 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── パラメータ取得 ────────────────────────────────────────────────────
-	vmidStr := r.PathValue("id")
-	if vmidStr == "" {
-		log.Printf("vmTerminalHandler: missing vmid")
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("vmTerminalHandler: missing uuid")
 		http.Error(w, "missing vmid", http.StatusBadRequest)
-		return
-	}
-	var vmid int
-	if _, err := fmt.Sscan(vmidStr, &vmid); err != nil || vmid == 0 {
-		log.Printf("vmTerminalHandler: invalid vmid: %q", vmidStr)
-		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
 
@@ -465,17 +469,17 @@ func vmTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
 	}
-	vm, err := getVMByProxmoxID(vmid, dbUserID)
+	vm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
-		log.Printf("vmTerminalHandler: getVMByProxmoxID(%d): %v", vmid, err)
+		log.Printf("vmTerminalHandler: getVMByUUID(%s): %v", uuid, err)
 		http.Error(w, "vm not found", http.StatusNotFound)
 		return
 	}
 
 	// ── VM IPアドレス取得 ─────────────────────────────────────────────────
-	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vmid)
+	info, err := getProxmoxVMInfo(context.Background(), vm.NodeName, vm.ProxmoxVMID)
 	if err != nil || info.IP == "-" {
-		log.Printf("vmTerminalHandler: getProxmoxVMInfo(node=%s, vmid=%d): err=%v, ip=%q", vm.NodeName, vmid, err, info.IP)
+		log.Printf("vmTerminalHandler: getProxmoxVMInfo(node=%s, vmid=%d): err=%v, ip=%q", vm.NodeName, vm.ProxmoxVMID, err, info.IP)
 		http.Error(w, "VM IP not available", http.StatusInternalServerError)
 		return
 	}
@@ -647,10 +651,9 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		State string `json:"state"`
 	}
 
-	vmidStr := r.PathValue("id")
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		log.Printf("chStateHandler: invalid vmid: %q", vmidStr)
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("chStateHandler: missing uuid")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "invalid vmid",
@@ -686,9 +689,9 @@ func chStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid, dbUserID)
+	vm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
-		log.Printf("chStateHandler: getVMByProxmoxID(%d): %v", vmid, err)
+		log.Printf("chStateHandler: getVMByUUID(%s): %v", uuid, err)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "vm not found",
@@ -734,17 +737,10 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vmidStr := r.PathValue("id")
-	if vmidStr == "" {
-		log.Printf("vmPrivateKeyHandler: missing vmid")
+	uuid := r.PathValue("id")
+	if uuid == "" {
+		log.Printf("vmPrivateKeyHandler: missing uuid")
 		http.Error(w, "missing vmid", http.StatusBadRequest)
-		return
-	}
-
-	vmid, err := strconv.Atoi(vmidStr)
-	if err != nil {
-		log.Printf("vmPrivateKeyHandler: invalid vmid: %q", vmidStr)
-		http.Error(w, "invalid vmid", http.StatusBadRequest)
 		return
 	}
 
@@ -755,14 +751,14 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm, err := getVMByProxmoxID(vmid, dbUserID)
+	vm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			log.Printf("vmPrivateKeyHandler: vm %d not found", vmid)
+			log.Printf("vmPrivateKeyHandler: vm %s not found", uuid)
 			http.Error(w, "vm not found", http.StatusNotFound)
 			return
 		}
-		log.Printf("vmPrivateKeyHandler: getVMByProxmoxID(%d): %v", vmid, err)
+		log.Printf("vmPrivateKeyHandler: getVMByUUID(%s): %v", uuid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -771,17 +767,17 @@ func vmPrivateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	keyBytes, err := os.ReadFile(keyPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("vmPrivateKeyHandler: key not available for vm %d: %v", vmid, err)
+			log.Printf("vmPrivateKeyHandler: key not available for vm %s: %v", uuid, err)
 			http.Error(w, "key not available", http.StatusNotFound)
 			return
 		}
-		log.Printf("vmPrivateKeyHandler: read key for vm %d: %v", vmid, err)
+		log.Printf("vmPrivateKeyHandler: read key for vm %s: %v", uuid, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"vm-%d-id_rsa\"", vmid))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"vm-%s-id_rsa\"", uuid))
 	w.Header().Set("Cache-Control", "no-store")
 
 	if _, err := w.Write(keyBytes); err != nil {
@@ -865,13 +861,13 @@ func rewriteTFVars(workdir string, req VMRequest) error {
 	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0600)
 }
 
-func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
+func getVMWorkdirForUser(kratosID string, uuid string) (string, error) {
 	dbUserID, err := getDatabaseUserID(kratosID)
 	if err != nil {
 		return "", err
 	}
 
-	vm, err := getVMByProxmoxID(vmid, dbUserID)
+	vm, err := getVMByUUID(uuid, dbUserID)
 	if err != nil {
 		return "", err
 	}
@@ -879,8 +875,8 @@ func getVMWorkdirForUser(kratosID string, vmid int) (string, error) {
 	return vm.TFWorkdir, nil
 }
 
-func updateVMResources(userID string, req VMRequest) error {
-	workdir, err := getVMWorkdirForUser(userID, req.VMID)
+func updateVMResources(userID string, uuid string, req VMRequest) error {
+	workdir, err := getVMWorkdirForUser(userID, uuid)
 	if err != nil {
 		return err
 	}
@@ -897,18 +893,19 @@ func updateVMResources(userID string, req VMRequest) error {
 	return applyTerraform(workdir)
 }
 
-func runUpdateVMJob(jobID string, userID string, req VMRequest) {
+func runUpdateVMJob(jobID string, userID string, uuid string, req VMRequest) {
 	jobAny, _ := jobs.Load(jobID)
 	job := jobAny.(*Job)
 	job.Status = "running(modify)"
 	job.VMID = req.VMID
+	job.UUID = uuid
 	job.LogPath = filepath.Join("/tmp", jobID+".log")
 	jobs.Store(jobID, job)
 
 	logFile, _ := os.Create(job.LogPath)
 	defer logFile.Close()
 
-	err := updateVMResources(userID, req)
+	err := updateVMResources(userID, uuid, req)
 	if err != nil {
 		job.Status = "error"
 		fmt.Fprintf(logFile, "Error: %v\n", err)

@@ -208,8 +208,11 @@ cloudinit_id  = "%s"
 	// cloudinit ファイルは不要になったので削除 + cicustom 参照を解除
 	deleteCloudInitFile(ctx, nodeName, cloudinitID, vmID)
 
+	// UUIDv7 を生成
+	vmUUID := uuid.Must(uuid.NewV7()).String()
+
 	// DB に VM を記録
-	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
+	createdVM, err := createVM(dbUserID, vmUUID, vmID, nodeName, workdir)
 	if err != nil {
 		failJob(jobID, "Error creating VM in database:", err)
 		return
@@ -222,6 +225,7 @@ cloudinit_id  = "%s"
 	}
 
 	job.VMID = vmID
+	job.UUID = vmUUID
 	job.NodeName = nodeName
 
 	// 完了後は DB で completed に変更してからログを破棄する

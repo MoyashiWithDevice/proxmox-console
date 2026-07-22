@@ -62,6 +62,7 @@ func listUserVMs(userID string) ([]VMResponse, error) {
 			defer wg.Done()
 
 			vm := VMResponse{
+				UUID:   dbVm.UUID,
 				VMID:   dbVm.ProxmoxVMID,
 				Status: dbVm.Status,
 				IP:     "-",

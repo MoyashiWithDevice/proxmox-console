@@ -29,11 +29,11 @@ const ghostBtn: React.CSSProperties = {
 
 export function Support() {
   const [searchParams] = useSearchParams();
-  const defaultVmid = searchParams.get('vmid') || '';
+  const defaultUuid = searchParams.get('id') || searchParams.get('vmid') || '';
   const { vms } = useVM();
 
   const [subject, setSubject] = useState('');
-  const [vmid, setVmid] = useState(defaultVmid);
+  const [uuid, setUuid] = useState(defaultUuid);
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -48,10 +48,10 @@ export function Support() {
     setSubmitting(true);
     setStatus(null);
     try {
-      const res = await submitSupport({ subject: s, vmid, details: d });
+      const res = await submitSupport({ subject: s, vmid: uuid, details: d });
       setStatus({ type: 'success', msg: res.message || 'Support request submitted.' });
       setSubject('');
-      setVmid('');
+      setUuid('');
       setDetails('');
     } catch (err: unknown) {
       setStatus({ type: 'error', msg: (err as Error).message || 'Submission failed.' });
@@ -78,11 +78,11 @@ export function Support() {
             style={inputStyle}
           />
         </Field>
-        <Field label="VMID">
-          <select value={vmid} onChange={(e) => setVmid(e.target.value)} style={inputStyle}>
+        <Field label="VM">
+          <select value={uuid} onChange={(e) => setUuid(e.target.value)} style={inputStyle}>
             <option value="">No VM selected</option>
             {vms.map((vm) => (
-              <option key={vm.VMID} value={vm.VMID}>
+              <option key={vm.uuid} value={vm.uuid}>
                 {vm.VMID} — {vm.servername || 'Unnamed'}
               </option>
             ))}

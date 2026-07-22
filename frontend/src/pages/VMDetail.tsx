@@ -40,10 +40,10 @@ export function VMDetail() {
     return <JobView jobId={id || ''} />;
   }
 
-  return <VMDetailView vmid={id ? Number(id) : null} />;
+  return <VMDetailView uuid={id || ''} />;
 }
 
-function VMDetailView({ vmid }: { vmid: number | null }) {
+function VMDetailView({ uuid }: { uuid: string }) {
   const navigate = useNavigate();
   const [vm, setVM] = useState<VM | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,8 +56,8 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
   const [hdd, setHdd] = useState(0);
 
   const loadVM = useCallback(() => {
-    if (!vmid) return;
-    fetchVM(vmid).then((data) => {
+    if (!uuid) return;
+    fetchVM(uuid).then((data) => {
       setVM(data);
       if (!editing) {
         setName(data.servername || '');
@@ -67,7 +67,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
       }
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [vmid, editing]);
+  }, [uuid, editing]);
 
   useEffect(() => {
     loadVM();
@@ -75,10 +75,10 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     return () => clearInterval(interval);
   }, [loadVM]);
 
-  async function handleToggleVM(vmid: number, action: 'start' | 'stop') {
+  async function handleToggleVM(uuid: string, action: 'start' | 'stop') {
     if (action === 'stop' && !confirm('Stop this VM?')) return;
     try {
-      await changeVMState(vmid, action);
+      await changeVMState(uuid, action);
       if (vm) {
         const updated = { ...vm, Status: action === 'start' ? 'running' : 'stopped', status: action === 'start' ? 'running' : 'stopped' };
         setVM(updated);
@@ -89,7 +89,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
   }
 
   async function handleSave() {
-    if (!vm?.VMID) return;
+    if (!vm?.uuid) return;
     const newHdd = parseInt(String(hdd), 10);
     if (newHdd < (vm.hdd || 0)) {
       alert('Cannot decrease disk size');
@@ -109,7 +109,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
 
     setSaving(true);
     try {
-      await updateVM(vm.VMID, patch as { name?: string; cores?: number; memory?: number; hdd?: number });
+      await updateVM(vm.uuid, patch as { name?: string; cores?: number; memory?: number; hdd?: number });
       setSaving(false);
       setEditing(false);
     } catch {
@@ -119,10 +119,10 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
   }
 
   async function handleDelete() {
-    if (!vm?.VMID || !confirm('Are you sure? This action cannot be undone.')) return;
+    if (!vm?.uuid || !confirm('Are you sure? This action cannot be undone.')) return;
     setDeleting(true);
     try {
-      await deleteVM(vm.VMID);
+      await deleteVM(vm.uuid);
       navigate('/');
     } catch (err: unknown) {
       alert('Deletion failed: ' + (err as Error).message);
@@ -131,9 +131,9 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
   }
 
   async function handleDownloadKey() {
-    if (!vm?.VMID) { alert('VM ID not found'); return; }
+    if (!vm?.uuid) { alert('VM not found'); return; }
     try {
-      const blob = await downloadKey(vm.VMID);
+      const blob = await downloadKey(vm.uuid);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -147,7 +147,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     }
   }
 
-  if (!vmid) {
+  if (!uuid) {
     return <div style={{ color: '#555', fontSize: 13 }}>Select a VM from the sidebar to view details</div>;
   }
 
@@ -161,14 +161,14 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
     <div style={{ maxWidth: 800 }}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 28, alignItems: 'center' }}>
         <button
-          onClick={() => window.open(`/terminal?vmid=${vm.VMID}`, '_blank', 'noopener,noreferrer')}
+          onClick={() => window.open(`/terminal?vmid=${vm.uuid}`, '_blank', 'noopener,noreferrer')}
           style={ghostBtn}
         >
           <Icon name="terminal" size={12} color="#444" /> Terminal
         </button>
         {!editing && (
           <button
-            onClick={() => handleToggleVM(vm.VMID!, status === 'running' ? 'stop' : 'start')}
+            onClick={() => handleToggleVM(vm.uuid, status === 'running' ? 'stop' : 'start')}
             style={ghostBtn}
           >
             {status === 'running' ? 'Stop' : 'Start'}
@@ -261,7 +261,7 @@ function VMDetailView({ vmid }: { vmid: number | null }) {
 
       <div style={{ marginTop: 40, paddingTop: 24, borderTop: '1px solid #111' }}>
         <p style={{ fontSize: 12, color: '#555' }}>
-          <a href={`/support?vmid=${vm.VMID}`} style={{ color: '#555', textDecoration: 'none' }}>
+          <a href={`/support?id=${vm.uuid}`} style={{ color: '#555', textDecoration: 'none' }}>
             Need help? Contact support →
           </a>
         </p>
@@ -292,12 +292,12 @@ function JobView({ jobId }: { jobId: string }) {
   }, [loadJob]);
 
   useEffect(() => {
-    if (!job || !job.vmid || job.Status !== 'done' && job.status !== 'done') return;
+    if (!job || !job.uuid || job.Status !== 'done' && job.status !== 'done') return;
     const interval = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
           clearInterval(interval);
-          navigate(`/vm?id=${job.vmid}`);
+          navigate(`/vm?id=${job.uuid}`);
           return 0;
         }
         return c - 1;
@@ -337,7 +337,7 @@ function JobView({ jobId }: { jobId: string }) {
           style={{ background: '#000', border: '1px solid #111', padding: 16, height: 300, whiteSpace: 'pre-wrap', fontFamily: 'Monaco,monospace', fontSize: 11, color: '#888', overflow: 'auto', lineHeight: 1.5 }}
           dangerouslySetInnerHTML={{ __html: colorizeTerraformLog(jobLog) }}
         />
-        {job?.vmid && (js === 'done') && (
+        {job?.uuid && (js === 'done') && (
           <div style={{ marginTop: 20 }}>
             <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
               VM created successfully. Redirecting in {countdown} seconds...

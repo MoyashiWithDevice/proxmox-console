@@ -53,7 +53,7 @@ function ActionBtn({ label, onClick }: { label: string; onClick: (e: MouseEvent<
 export function Dashboard() {
   const { vms, reload } = useVM();
   const navigate = useNavigate();
-  const [hovered, setHovered] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
@@ -64,10 +64,10 @@ export function Dashboard() {
     return true;
   });
 
-  async function handleAction(vmid: number | undefined, action: 'start' | 'stop') {
-    if (!vmid) return;
+  async function handleAction(uuid: string | undefined, action: 'start' | 'stop') {
+    if (!uuid) return;
     try {
-      await changeVMState(vmid, action);
+      await changeVMState(uuid, action);
       reload();
     } catch {}
   }
@@ -162,6 +162,7 @@ export function Dashboard() {
             </tr>
           ) : (
             filtered.map((vm) => {
+              const uuid = vm.uuid;
               const vmid = vm.VMID;
               const name = vm.servername || 'Unnamed';
               const status = (vm.status || 'stopped').toLowerCase();
@@ -169,26 +170,26 @@ export function Dashboard() {
               const cores = vm.cpu || 0;
               const mem = vm.memory || 0;
               const hdd = vm.hdd || 0;
-              const isHover = hovered === vmid;
+              const isHover = hovered === uuid;
 
               return (
                 <tr
-                  key={vmid}
+                  key={uuid}
                   style={{ background: isHover ? '#080808' : 'transparent', cursor: 'pointer' }}
-                  onMouseEnter={() => setHovered(vmid!)}
+                  onMouseEnter={() => setHovered(uuid)}
                   onMouseLeave={() => setHovered(null)}
-                  onDoubleClick={() => navigate(`/vm?id=${vmid}`)}
+                  onDoubleClick={() => navigate(`/vm?id=${uuid}`)}
                 >
                   <td style={{ ...td, color: '#444', width: 40 }}>
                     <Icon name="monitor" size={13} color="#444" />
                   </td>
                   <td style={{ ...td, color: '#2a2a2a', fontFamily: 'monospace' }}>
-                    <a href={`/vm?id=${vmid}`} style={{ color: '#2a2a2a', textDecoration: 'none' }}>
+                    <a href={`/vm?id=${uuid}`} style={{ color: '#2a2a2a', textDecoration: 'none' }}>
                       {vmid}
                     </a>
                   </td>
                   <td style={{ ...td, color: '#fff' }}>
-                    <a href={`/vm?id=${vmid}`} style={{ color: '#fff', textDecoration: 'none' }}>
+                    <a href={`/vm?id=${uuid}`} style={{ color: '#fff', textDecoration: 'none' }}>
                       {name}
                     </a>
                   </td>
@@ -204,10 +205,10 @@ export function Dashboard() {
                   <td style={{ ...td, color: '#ccc' }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {status !== 'running' && (
-                        <ActionBtn label="Start" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'start'); }} />
+                        <ActionBtn label="Start" onClick={(e) => { e.stopPropagation(); handleAction(uuid, 'start'); }} />
                       )}
                       {status === 'running' && (
-                        <ActionBtn label="Stop" onClick={(e) => { e.stopPropagation(); handleAction(vmid, 'stop'); }} />
+                        <ActionBtn label="Stop" onClick={(e) => { e.stopPropagation(); handleAction(uuid, 'stop'); }} />
                       )}
                     </div>
                   </td>

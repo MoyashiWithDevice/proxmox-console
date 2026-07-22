@@ -17,8 +17,8 @@ export function fetchVMs(): Promise<VM[]> {
   return api<VM[]>('/api/vms');
 }
 
-export function fetchVM(id: number): Promise<VM> {
-  return api<VM>(`/api/vms/${id}`);
+export function fetchVM(uuid: string): Promise<VM> {
+  return api<VM>(`/api/vms/${uuid}`);
 }
 
 export function fetchJob(id: string): Promise<VM> {
@@ -33,30 +33,30 @@ export function createVM(req: { servername: string; os: string; cpu: number; mem
   });
 }
 
-export function updateVM(vmid: number, req: Omit<VMRequest, 'vmid'>): Promise<{ job_id: string; status: string }> {
-  return api(`/api/vms/${vmid}`, {
+export function updateVM(uuid: string, req: Omit<VMRequest, 'vmid'>): Promise<{ job_id: string; status: string }> {
+  return api(`/api/vms/${uuid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   });
 }
 
-export function deleteVM(vmid: number): Promise<{ status: string }> {
-  return api(`/api/vms/${vmid}`, {
+export function deleteVM(uuid: string): Promise<{ status: string }> {
+  return api(`/api/vms/${uuid}`, {
     method: 'DELETE',
   });
 }
 
-export function changeVMState(vmid: number, state: 'start' | 'stop'): Promise<{ status: string }> {
-  return api(`/api/vms/${vmid}/state`, {
+export function changeVMState(uuid: string, state: 'start' | 'stop'): Promise<{ status: string }> {
+  return api(`/api/vms/${uuid}/state`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state }),
   });
 }
 
-export function downloadKey(vmid: number): Promise<Blob> {
-  return fetch(`/api/vms/${vmid}/key`, { credentials: 'include' }).then((res) => res.blob());
+export function downloadKey(uuid: string): Promise<Blob> {
+  return fetch(`/api/vms/${uuid}/key`, { credentials: 'include' }).then((res) => res.blob());
 }
 
 export function fetchSettings(): Promise<SettingsResponse> {

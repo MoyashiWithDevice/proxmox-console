@@ -103,12 +103,12 @@ export function Sidebar() {
             <>
               {vms.map((v) => (
                 <Item
-                  key={v.VMID}
+                  key={v.uuid}
                   label={v.servername || `VM ${v.VMID}`}
                   status={v.Status || v.status || 'unknown'}
-                  active={String(v.VMID) === currentID && isVMPage}
+                  active={v.uuid === currentID && isVMPage}
                   depth={1}
-                  onClick={() => navigate(`/vm?id=${v.VMID}`)}
+                  onClick={() => navigate(`/vm?id=${v.uuid}`)}
                 />
               ))}
               {jobs.map((j) => {

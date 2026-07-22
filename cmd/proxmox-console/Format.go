@@ -13,6 +13,7 @@ type VMRequest struct {
 }
 
 type VMResponse struct {
+	UUID       string `json:"uuid,omitempty"`
 	VMID       int    `json:"VMID,omitempty"`
 	CPU        int    `json:"cpu,omitempty"`
 	Memory     int    `json:"memory,omitempty"`
@@ -30,6 +31,7 @@ type JobResponse struct {
 	IP         string `json:"ip,omitempty"`
 	Log        string `json:"log,omitempty"`
 	VMID       int    `json:"vmid,omitempty"`
+	UUID       string `json:"uuid,omitempty"`
 }
 
 type ISOInfo struct {
@@ -44,6 +46,7 @@ type Job struct {
 	Status     string
 	IP         string
 	VMID       int
+	UUID       string
 	LogPath    string
 	Log        string
 	Workdir    string

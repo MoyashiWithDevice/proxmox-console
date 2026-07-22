@@ -21,10 +21,9 @@ type ResourceLimit struct {
 	Step int `json:"step,omitempty"`
 }
 type OSOption struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	// Terraformに渡すテンプレートID等、内部用フィールドは json:"-" で隠す
-	TemplateID int    `json:"-"`
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	TemplateID int    `json:"template_id"`
 	Image      string `json:"image,omitempty"`
 }
 type ResourceConstraints struct {

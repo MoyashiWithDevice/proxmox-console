@@ -24,3 +24,14 @@ CREATE TABLE IF NOT EXISTS isos (
     size       BIGINT      NOT NULL DEFAULT 0,
     created_at TIMESTAMP   NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS support_requests (
+    id         SERIAL      PRIMARY KEY,
+    user_id    INTEGER     REFERENCES users(id),
+    kratos_id  TEXT        NOT NULL,
+    subject    TEXT        NOT NULL,
+    vmid       TEXT,
+    details    TEXT        NOT NULL,
+    status     TEXT        NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP   NOT NULL DEFAULT NOW()
+);

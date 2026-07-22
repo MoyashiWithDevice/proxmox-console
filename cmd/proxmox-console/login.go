@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -31,7 +34,20 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			next(w, r)
+			// Extract Kratos ID and store in request context
+			body, _ := io.ReadAll(resp.Body)
+			var whoamiResp struct {
+				Identity struct {
+					ID string `json:"id"`
+				} `json:"identity"`
+			}
+			if err := json.Unmarshal(body, &whoamiResp); err == nil && whoamiResp.Identity.ID != "" {
+				ctx := r.Context()
+				ctx = context.WithValue(ctx, "kratosID", whoamiResp.Identity.ID)
+				next(w, r.WithContext(ctx))
+			} else {
+				next(w, r)
+			}
 			return
 		}
 
@@ -54,4 +70,36 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 		}
 		http.Redirect(w, r, "/error?code=500", http.StatusFound)
 	}
+}
+
+func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return requireLogin(func(w http.ResponseWriter, r *http.Request) {
+		isAPI := strings.HasPrefix(r.URL.Path, "/api/")
+		kratosID, ok := r.Context().Value("kratosID").(string)
+		if !ok || kratosID == "" {
+			if isAPI {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+			} else {
+				http.Redirect(w, r, "/login", http.StatusFound)
+			}
+			return
+		}
+
+		admin, err := isAdmin(kratosID)
+		if err != nil || !admin {
+			log.Printf("admin access denied for user %s: %v", kratosID, err)
+			if isAPI {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"error": "admin access required"})
+			} else {
+				http.Redirect(w, r, "/", http.StatusFound)
+			}
+			return
+		}
+
+		next(w, r)
+	})
 }

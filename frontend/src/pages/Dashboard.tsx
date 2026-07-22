@@ -2,8 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
 import { useVM } from '../context/VMContext';
-import { changeVMState } from '../api';
-import { useState, type MouseEvent } from 'react';
+import { changeVMState, api } from '../api';
+import { useState, useEffect, type MouseEvent } from 'react';
 
 type StatusFilter = 'all' | 'running' | 'stopped';
 
@@ -56,6 +56,13 @@ export function Dashboard() {
   const [hovered, setHovered] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    api<any>('/api/admin/users')
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   const filtered = vms.filter((v) => {
     const s = search.toLowerCase();
@@ -82,6 +89,11 @@ export function Dashboard() {
           Virtual Machines
         </h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          {isAdmin && (
+            <button onClick={() => navigate('/admin')} style={ghostBtn}>
+              <Icon name="settings" size={11} /> Admin Panel
+            </button>
+          )}
           <button onClick={() => navigate('/vm/create')} style={ghostBtn}>
             <Icon name="plus" size={11} /> Create VM
           </button>

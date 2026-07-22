@@ -12,6 +12,7 @@ import (
 )
 
 var db *sql.DB
+var kratosDB *sql.DB
 
 // initDB はデータベース接続を初期化します
 func initDB() error {
@@ -66,6 +67,90 @@ func initDB() error {
 	return nil
 }
 
+// initKratosDB はKratosデータベースへの接続を初期化します
+func initKratosDB() error {
+	host := os.Getenv("KRATOS_DB_HOST")
+	port := os.Getenv("KRATOS_DB_PORT")
+	user := os.Getenv("KRATOS_DB_USER")
+	password := os.Getenv("KRATOS_DB_PASSWORD")
+	dbname := os.Getenv("KRATOS_DB_NAME")
+
+	if host == "" {
+		host = "kratos-postgres"
+	}
+	if port == "" {
+		port = "5432"
+	}
+	if user == "" {
+		user = "kratos"
+	}
+	if password == "" {
+		password = "secret"
+	}
+	if dbname == "" {
+		dbname = "kratos"
+	}
+
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
+
+	var err error
+	kratosDB, err = sql.Open("postgres", psqlInfo)
+	if err != nil {
+		return fmt.Errorf("failed to open kratos database: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := kratosDB.PingContext(ctx); err != nil {
+		return fmt.Errorf("failed to ping kratos database: %w", err)
+	}
+
+	kratosDB.SetMaxOpenConns(10)
+	kratosDB.SetMaxIdleConns(2)
+	kratosDB.SetConnMaxLifetime(5 * time.Minute)
+
+	log.Println("Kratos database connected successfully")
+	return nil
+}
+
+// getEmailByKratosID はKratos IDからメールアドレスを取得します
+func getEmailByKratosID(kratosID string) string {
+	if kratosDB == nil {
+		return ""
+	}
+	var email string
+	err := kratosDB.QueryRow(
+		"SELECT traits->>'email' FROM identities WHERE id = $1",
+		kratosID,
+	).Scan(&email)
+	if err != nil {
+		return ""
+	}
+	return email
+}
+
+// getEmailsByKratosIDs は複数のKratos IDからメールアドレスを一括取得します
+func getEmailsByKratosIDs(kratosIDs []string) map[string]string {
+	result := make(map[string]string)
+	if kratosDB == nil || len(kratosIDs) == 0 {
+		return result
+	}
+	for _, id := range kratosIDs {
+		result[id] = getEmailByKratosID(id)
+	}
+	return result
+}
+
+// closeKratosDB はKratosデータベース接続を閉じます
+func closeKratosDB() error {
+	if kratosDB != nil {
+		return kratosDB.Close()
+	}
+	return nil
+}
+
 func ensureSchema() error {
 	const schemaSQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -92,6 +177,17 @@ CREATE TABLE IF NOT EXISTS isos (
     filename   TEXT        NOT NULL,
     volume_id  TEXT        NOT NULL,
     size       BIGINT      NOT NULL DEFAULT 0,
+    created_at TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS support_requests (
+    id         SERIAL      PRIMARY KEY,
+    user_id    INTEGER     REFERENCES users(id),
+    kratos_id  TEXT        NOT NULL,
+    subject    TEXT        NOT NULL,
+    vmid       TEXT,
+    details    TEXT        NOT NULL,
+    status     TEXT        NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 `
@@ -295,6 +391,120 @@ type ISO struct {
 	VolumeID  string
 	Size      int64
 	CreatedAt time.Time
+}
+
+// SupportRequest はサポート依頼を表します
+type SupportRequest struct {
+	ID        int       `json:"id"`
+	UserID    *int      `json:"user_id"`
+	KratosID  string    `json:"kratos_id"`
+	Subject   string    `json:"subject"`
+	VMID      *string   `json:"vmid"`
+	Details   string    `json:"details"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// createSupportRequest はサポート依頼をデータベースに保存します
+func createSupportRequest(kratosID string, subject string, vmid string, details string) (*SupportRequest, error) {
+	req := &SupportRequest{}
+	var vmidPtr *string
+	if vmid != "" {
+		vmidPtr = &vmid
+	}
+	
+	// Get user_id if exists
+	var userID *int
+	user, err := getOrCreateUser(kratosID)
+	if err == nil {
+		userID = &user.ID
+	}
+
+	err = db.QueryRow(
+		`INSERT INTO support_requests (user_id, kratos_id, subject, vmid, details) 
+		 VALUES ($1, $2, $3, $4, $5) 
+		 RETURNING id, user_id, kratos_id, subject, vmid, details, status, created_at`,
+		userID, kratosID, subject, vmidPtr, details,
+	).Scan(&req.ID, &req.UserID, &req.KratosID, &req.Subject, &req.VMID, &req.Details, &req.Status, &req.CreatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create support request: %w", err)
+	}
+
+	return req, nil
+}
+
+// getAllSupportRequests はすべてのサポート依頼を取得します（管理者用）
+func getAllSupportRequests() ([]*SupportRequest, error) {
+	rows, err := db.Query(
+		"SELECT id, user_id, kratos_id, subject, vmid, details, status, created_at FROM support_requests ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query support requests: %w", err)
+	}
+	defer rows.Close()
+
+	var reqs []*SupportRequest
+	for rows.Next() {
+		req := &SupportRequest{}
+		if err := rows.Scan(&req.ID, &req.UserID, &req.KratosID, &req.Subject, &req.VMID, &req.Details, &req.Status, &req.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan support request: %w", err)
+		}
+		reqs = append(reqs, req)
+	}
+	return reqs, nil
+}
+
+// updateSupportRequestStatus はサポート依頼のステータスを更新します
+func updateSupportRequestStatus(id int, status string) error {
+	result, err := db.Exec(
+		"UPDATE support_requests SET status = $1 WHERE id = $2",
+		status, id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update support request status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("support request not found")
+	}
+
+	return nil
+}
+
+// getAllUsers はすべてのユーザーを取得します（管理者用）
+func getAllUsers() ([]*User, error) {
+	rows, err := db.Query(
+		"SELECT id, kratos_id, role, created_at FROM users ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		if err := rows.Scan(&user.ID, &user.KratosID, &user.Role, &user.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+// isAdmin は指定されたKratos IDのユーザーが管理者かどうかを確認します
+func isAdmin(kratosID string) (bool, error) {
+	user, err := getOrCreateUser(kratosID)
+	if err != nil {
+		return false, err
+	}
+	return user.Role == "admin", nil
 }
 
 // createISO はISO情報をデータベースに保存します

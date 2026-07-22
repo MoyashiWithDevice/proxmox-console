@@ -102,4 +102,61 @@ export function fetchJobs(): Promise<VM[]> {
   return api<VM[]>('/api/jobs');
 }
 
+export interface AdminUser {
+  id: number;
+  kratos_id: string;
+  role: string;
+  created_at: string;
+  email: string;
+}
+
+export function fetchAdminUsers(): Promise<AdminUser[]> {
+  return api<AdminUser[]>('/api/admin/users');
+}
+
+export interface AdminSettings {
+  resources: {
+    cpu: { min: number; max: number };
+    memory: { min: number; max: number; step: number };
+    hdd: { min: number; max: number; step: number };
+  };
+  os: Array<{ id: string; label: string; template_id: number; image?: string }>;
+  agent: { user: string };
+}
+
+export function fetchAdminSettings(): Promise<AdminSettings> {
+  return api<AdminSettings>('/api/admin/settings');
+}
+
+export function updateAdminSettings(data: Partial<AdminSettings>): Promise<{ status: string }> {
+  return api('/api/admin/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export interface SupportRequest {
+  id: number;
+  user_id: number | null;
+  kratos_id: string;
+  subject: string;
+  vmid: string | null;
+  details: string;
+  status: string;
+  created_at: string;
+  email: string;
+}
+
+export function fetchAdminSupport(): Promise<SupportRequest[]> {
+  return api<SupportRequest[]>('/api/admin/support');
+}
+
+export function updateSupportStatus(id: number, status: string): Promise<{ status: string }> {
+  return api<{ status: string }>(`/api/admin/support/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
 

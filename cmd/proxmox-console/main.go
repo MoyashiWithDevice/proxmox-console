@@ -35,6 +35,12 @@ func main() {
 	}
 	defer closeDB()
 
+	// Kratos データベース初期化
+	if err := initKratosDB(); err != nil {
+		log.Printf("Warning: Failed to initialize kratos database: %v", err)
+	}
+	defer closeKratosDB()
+
 	// SPA 静的アセット
 	http.Handle("/assets/", http.FileServer(http.Dir("./static/dist")))
 
@@ -65,6 +71,13 @@ func main() {
 	http.HandleFunc("/api/iso/download", requireLogin(downloadISOHandler))
 	http.HandleFunc("/api/isos", requireLogin(listISOsHandler))
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
+	// Admin routes
+	http.HandleFunc("GET /api/admin/users", requireAdmin(adminUsersHandler))
+	http.HandleFunc("GET /api/admin/settings", requireAdmin(adminSettingsGetHandler))
+	http.HandleFunc("PUT /api/admin/settings", requireAdmin(adminSettingsPutHandler))
+	http.HandleFunc("GET /api/admin/support", requireAdmin(adminSupportHandler))
+	http.HandleFunc("PATCH /api/admin/support/{id}", requireAdmin(adminSupportUpdateHandler))
+
 	http.HandleFunc("/api/auth/flow", authFlowAPIHandler)
 	http.HandleFunc("/logout", requireLogin(logoutHandler))
 	http.HandleFunc("/login", loginUIHandler)
@@ -115,7 +128,7 @@ func supportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := getKratosUserIDFromRequest(r)
+	kratosID, err := getKratosUserIDFromRequest(r)
 	if err != nil {
 		http.Error(w, "認証情報が取得できませんでした", http.StatusUnauthorized)
 		return
@@ -137,7 +150,14 @@ func supportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("support request from user=%s vmid=%s subject=%s details=%s", userID, req.VMID, req.Subject, req.Details)
+	_, err = createSupportRequest(kratosID, req.Subject, req.VMID, req.Details)
+	if err != nil {
+		log.Printf("failed to save support request: %v", err)
+		http.Error(w, "サポート依頼の保存に失敗しました", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("support request from user=%s vmid=%s subject=%s", kratosID, req.VMID, req.Subject)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "サポート依頼を送信しました。"})

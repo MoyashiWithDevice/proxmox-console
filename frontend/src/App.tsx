@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
 import { AppLayout } from './components/AppLayout';
 import { Dashboard } from './pages/Dashboard';
@@ -8,6 +8,9 @@ import { TerminalPage } from './pages/Terminal';
 import { Support } from './pages/Support';
 import { AuthPage, ErrorAuthPage } from './pages/Auth';
 import { ErrorPage } from './pages/ErrorPage';
+import { AdminSettingsPage } from './pages/AdminSettings';
+import { AdminSupportPage } from './pages/AdminSupport';
+import { AdminUsersPage } from './pages/AdminUsers';
 
 export function App() {
   return (
@@ -25,6 +28,12 @@ export function App() {
           <Route path="/job" element={<VMDetail />} />
           <Route path="/vm/create" element={<VMCreate />} />
           <Route path="/support" element={<Support />} />
+          
+          {/* Admin Routes */}
+          <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
+          <Route path="/admin/support" element={<AdminSupportPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

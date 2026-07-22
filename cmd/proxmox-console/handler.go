@@ -1194,6 +1194,180 @@ func listISOsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+// GET /api/admin/users
+func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(`
+		SELECT u.id, u.kratos_id, u.role, u.created_at
+		FROM users u
+		ORDER BY u.created_at DESC
+	`)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to list users")
+		return
+	}
+	defer rows.Close()
+
+	type AdminUser struct {
+		ID        int       `json:"id"`
+		KratosID  string    `json:"kratos_id"`
+		Role      string    `json:"role"`
+		CreatedAt time.Time `json:"created_at"`
+		Email     string    `json:"email"`
+	}
+
+	var users []AdminUser
+	var kratosIDs []string
+	for rows.Next() {
+		var u AdminUser
+		if err := rows.Scan(&u.ID, &u.KratosID, &u.Role, &u.CreatedAt); err != nil {
+			continue
+		}
+		kratosIDs = append(kratosIDs, u.KratosID)
+		users = append(users, u)
+	}
+
+	emails := getEmailsByKratosIDs(kratosIDs)
+	for i := range users {
+		users[i].Email = emails[users[i].KratosID]
+	}
+
+	if users == nil {
+		users = []AdminUser{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
+}
+
+// GET /api/admin/settings
+func adminSettingsGetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(SettingsConf)
+}
+
+// PUT /api/admin/settings
+func adminSettingsPutHandler(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Resources ResourceConstraints `json:"resources"`
+		OS        []OSOption          `json:"os"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid settings data")
+		return
+	}
+
+	SettingsConf.Resources = payload.Resources
+	SettingsConf.OS = payload.OS
+
+	// Save to file
+	fileConf := SettingsConfig{
+		Resources: payload.Resources,
+		OS:        payload.OS,
+		Agent: AgentConfig{
+			User: SettingsConf.Agent.User,
+		},
+	}
+
+	data, err := json.MarshalIndent(fileConf, "", "  ")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to marshal settings")
+		return
+	}
+
+	if err := os.WriteFile("setting.json", data, 0644); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to write setting.json")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// GET /api/admin/support
+func adminSupportHandler(w http.ResponseWriter, r *http.Request) {
+	reqs, err := getAllSupportRequests()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to list support requests")
+		return
+	}
+
+	if reqs == nil {
+		reqs = []*SupportRequest{}
+	}
+
+	var kratosIDs []string
+	for _, req := range reqs {
+		kratosIDs = append(kratosIDs, req.KratosID)
+	}
+	emails := getEmailsByKratosIDs(kratosIDs)
+
+	type SupportRequestWithEmail struct {
+		ID        int       `json:"id"`
+		UserID    *int      `json:"user_id"`
+		KratosID  string    `json:"kratos_id"`
+		Subject   string    `json:"subject"`
+		VMID      *string   `json:"vmid"`
+		Details   string    `json:"details"`
+		Status    string    `json:"status"`
+		CreatedAt time.Time `json:"created_at"`
+		Email     string    `json:"email"`
+	}
+
+	var result []SupportRequestWithEmail
+	for _, req := range reqs {
+		result = append(result, SupportRequestWithEmail{
+			ID:        req.ID,
+			UserID:    req.UserID,
+			KratosID:  req.KratosID,
+			Subject:   req.Subject,
+			VMID:      req.VMID,
+			Details:   req.Details,
+			Status:    req.Status,
+			CreatedAt: req.CreatedAt,
+			Email:     emails[req.KratosID],
+		})
+	}
+
+	if result == nil {
+		result = []SupportRequestWithEmail{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// PATCH /api/admin/support/{id}
+func adminSupportUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id := 0
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid support request id")
+		return
+	}
+
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	validStatuses := map[string]bool{"pending": true, "in_progress": true, "resolved": true}
+	if !validStatuses[payload.Status] {
+		writeJSONError(w, http.StatusBadRequest, "invalid status value")
+		return
+	}
+
+	if err := updateSupportRequestStatus(id, payload.Status); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to update status")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 type flushWriter struct {
 	w http.ResponseWriter
 }

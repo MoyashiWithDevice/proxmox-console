@@ -2,7 +2,8 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from './Icon';
 import { useVM } from '../context/VMContext';
 import { statusColors } from '../types';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../api';
 
 interface ItemProps {
   label: string;
@@ -48,6 +49,13 @@ export function Sidebar() {
   const [searchParams] = useSearchParams();
   const { vms, jobs } = useVM();
   const [vmOpen, setVmOpen] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    api<any>('/api/admin/users')
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   const currentID = searchParams.get('id');
 
@@ -157,6 +165,39 @@ export function Sidebar() {
         active={location.pathname === '/support'}
         onClick={() => navigate('/support')}
       />
+      
+      {isAdmin && (
+        <>
+          <div style={{
+            margin: '16px 0 8px 0',
+            borderTop: '1px solid #111',
+            paddingTop: 8,
+            paddingLeft: 16,
+            fontSize: 10, color: '#2a2a2a',
+            textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600,
+          }}>
+            Administrator
+          </div>
+          <Item
+            label="Settings"
+            icon="settings"
+            active={location.pathname === '/admin/settings'}
+            onClick={() => navigate('/admin/settings')}
+          />
+          <Item
+            label="Users"
+            icon="shield"
+            active={location.pathname === '/admin/users'}
+            onClick={() => navigate('/admin/users')}
+          />
+          <Item
+            label="Support Requests"
+            icon="terminal"
+            active={location.pathname === '/admin/support'}
+            onClick={() => navigate('/admin/support')}
+          />
+        </>
+      )}
     </div>
   );
 }

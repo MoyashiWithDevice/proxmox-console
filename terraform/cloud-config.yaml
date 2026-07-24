@@ -2,6 +2,16 @@
 hostname: ${servername}
 ssh_pwauth: false
 
+write_files:
+  - path: /etc/machine-id
+    content: ""
+    permissions: '0444'
+
+bootcmd:
+  - cloud-init clean --logs --seed
+  - systemd-machine-id-setup --random
+  - ln -sf /etc/machine-id /var/lib/dbus/machine-id
+
 users:
   - name: ${username}
     sudo: ALL=(ALL) NOPASSWD:ALL
@@ -23,11 +33,6 @@ chpasswd:
   expire: false
 
 runcmd:
-  # === machine-id の重複（IP重複）を防止する処理を追加 ===
-  - rm -f /etc/machine-id /var/lib/dbus/machine-id
-  - systemd-machine-id-setup
-  - ln -sf /etc/machine-id /var/lib/dbus/machine-id
-  - netplan apply
 %{ if runcmd != "" ~}
 %{ for cmd in split("\n", runcmd) ~}
   - ${cmd}

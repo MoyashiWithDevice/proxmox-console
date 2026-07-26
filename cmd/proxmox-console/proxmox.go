@@ -296,3 +296,31 @@ func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string) {
 	}
 	log.Printf("Cleaned up cloudinit file: %s", volID)
 }
+
+func clearCloudInitConfig(ctx context.Context, nodeName string, vmID int) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		log.Printf("Warning: clearCloudInitConfig: %v", err)
+		return
+	}
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		log.Printf("Warning: clearCloudInitConfig: %v", err)
+		return
+	}
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Printf("Warning: clearCloudInitConfig: %v", err)
+		return
+	}
+	task, err := vm.Config(ctx, goProxmox.VirtualMachineOption{Name: "delete", Value: "cicustom"})
+	if err != nil {
+		log.Printf("Warning: clearCloudInitConfig: failed to delete cicustom: %v", err)
+		return
+	}
+	if err := task.WaitFor(ctx, 30); err != nil {
+		log.Printf("Warning: clearCloudInitConfig: %v", err)
+		return
+	}
+	log.Printf("Cleared cloud-init config for VM %d", vmID)
+}

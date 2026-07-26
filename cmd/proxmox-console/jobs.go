@@ -208,6 +208,9 @@ cloudinit_id  = "%s"
 	// cloudinit ファイルは不要になったので削除
 	deleteCloudInitFile(ctx, nodeName, cloudinitID)
 
+	// VM設定からcloud-initの参照を解除し、再起動時にエラーが出ないようにする
+	clearCloudInitConfig(ctx, nodeName, vmID)
+
 	// DB に VM を記録
 	createdVM, err := createVM(dbUserID, vmID, nodeName, workdir)
 	if err != nil {

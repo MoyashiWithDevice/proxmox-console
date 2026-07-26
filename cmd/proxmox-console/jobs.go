@@ -211,6 +211,9 @@ cloudinit_id  = "%s"
 	// UUIDv7 を生成
 	vmUUID := uuid.Must(uuid.NewV7()).String()
 
+	// VM設定からcloud-initの参照を解除し、再起動時にエラーが出ないようにする
+	clearCloudInitConfig(ctx, nodeName, vmID)
+
 	// DB に VM を記録
 	createdVM, err := createVM(dbUserID, vmUUID, vmID, nodeName, workdir)
 	if err != nil {

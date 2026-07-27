@@ -179,6 +179,12 @@ export function Sidebar() {
             Administrator
           </div>
           <Item
+            label="Dashboard"
+            icon="layers"
+            active={location.pathname === '/admin/dashboard'}
+            onClick={() => navigate('/admin/dashboard')}
+          />
+          <Item
             label="Settings"
             icon="settings"
             active={location.pathname === '/admin/settings'}

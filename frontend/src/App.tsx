@@ -11,6 +11,7 @@ import { ErrorPage } from './pages/ErrorPage';
 import { AdminSettingsPage } from './pages/AdminSettings';
 import { AdminSupportPage } from './pages/AdminSupport';
 import { AdminUsersPage } from './pages/AdminUsers';
+import { AdminDashboardPage } from './pages/AdminDashboard';
 
 export function App() {
   return (
@@ -30,7 +31,8 @@ export function App() {
           <Route path="/support" element={<Support />} />
           
           {/* Admin Routes */}
-          <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />
           <Route path="/admin/support" element={<AdminSupportPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />

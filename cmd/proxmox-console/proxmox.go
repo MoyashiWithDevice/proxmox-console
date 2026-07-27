@@ -326,6 +326,95 @@ func deleteCloudInitFile(ctx context.Context, nodeName, cloudinitID string, vmid
 	log.Printf("Unset cicustom for VM %d", vmid)
 }
 
+// ProxmoxNodeStats はノードのリソース使用率を表します
+type ProxmoxNodeStats struct {
+	Name     string
+	CPU      float64
+	MaxCPU   int
+	Mem      uint64
+	MaxMem   uint64
+	Disk     uint64
+	MaxDisk  uint64
+	Uptime   uint64
+}
+
+// getProxmoxNodeStats はノードのリソース使用率を取得します
+func getProxmoxNodeStats(ctx context.Context, nodeName string) (ProxmoxNodeStats, error) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		return ProxmoxNodeStats{}, err
+	}
+
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		return ProxmoxNodeStats{}, fmt.Errorf("failed to get node: %w", err)
+	}
+
+	stats := ProxmoxNodeStats{
+		Name:    node.Name,
+		CPU:     node.CPU,
+		MaxCPU:  node.CPUInfo.CPUs,
+		Mem:     node.Memory.Used,
+		MaxMem:  node.Memory.Total,
+		Disk:    node.RootFS.Used,
+		MaxDisk: node.RootFS.Total,
+		Uptime:  node.Uptime,
+	}
+
+	return stats, nil
+}
+
+// ProxmoxVMUsage はVMのリソース使用率を表します
+type ProxmoxVMUsage struct {
+	VMID     int
+	Name     string
+	Status   string
+	CPU      float64
+	CPUs     int
+	Mem      uint64
+	MaxMem   uint64
+	Disk     uint64
+	MaxDisk  uint64
+	Uptime   uint64
+}
+
+// getProxmoxAllVMStatus はノード上の全VMのステータスと使用率を一括取得します
+func getProxmoxAllVMStatus(ctx context.Context, nodeName string) (map[int]ProxmoxVMUsage, error) {
+	client, err := getProxmoxClient()
+	if err != nil {
+		return nil, err
+	}
+
+	node, err := client.Node(ctx, nodeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+
+	vms, err := node.VirtualMachines(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get virtual machines: %w", err)
+	}
+
+	result := make(map[int]ProxmoxVMUsage, len(vms))
+	for _, vm := range vms {
+		vmid := int(vm.VMID)
+		result[vmid] = ProxmoxVMUsage{
+			VMID:    vmid,
+			Name:    vm.Name,
+			Status:  string(vm.Status),
+			CPU:     vm.CPU,
+			CPUs:    vm.CPUs,
+			Mem:     vm.Mem,
+			MaxMem:  vm.MaxMem,
+			Disk:    vm.Disk,
+			MaxDisk: vm.MaxDisk,
+			Uptime:  vm.Uptime,
+		}
+	}
+
+	return result, nil
+}
+
 func clearCloudInitConfig(ctx context.Context, nodeName string, vmID int) {
 	client, err := getProxmoxClient()
 	if err != nil {

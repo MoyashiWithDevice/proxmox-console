@@ -72,6 +72,7 @@ func main() {
 	http.HandleFunc("/api/isos", requireLogin(listISOsHandler))
 	http.HandleFunc("/api/support", requireLogin(supportHandler))
 	// Admin routes
+	http.HandleFunc("GET /api/admin/dashboard", requireAdmin(adminDashboardHandler))
 	http.HandleFunc("GET /api/admin/users", requireAdmin(adminUsersHandler))
 	http.HandleFunc("GET /api/admin/settings", requireAdmin(adminSettingsGetHandler))
 	http.HandleFunc("PUT /api/admin/settings", requireAdmin(adminSettingsPutHandler))

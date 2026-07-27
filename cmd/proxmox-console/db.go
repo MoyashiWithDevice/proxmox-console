@@ -542,6 +542,55 @@ func getUserISOs(userID int) ([]*ISO, error) {
 	return isos, nil
 }
 
+// VMWithUser はVM情報とユーザ情報を結合したものです（管理者ダッシュボード用）
+type VMWithUser struct {
+	ID          int
+	UserID      int
+	UUID        string
+	ProxmoxVMID int
+	NodeName    string
+	TFWorkdir   string
+	Status      string
+	CreatedAt   time.Time
+	KratosID    string
+	Email       string
+}
+
+// getAllVMsWithUsers は全VMをユーザ情報付きで取得します（管理者用）
+func getAllVMsWithUsers() ([]*VMWithUser, error) {
+	rows, err := db.Query(`
+		SELECT v.id, v.user_id, v.uuid, v.proxmox_vm_id, v.node_name, v.tf_workdir, v.status, v.created_at, u.kratos_id
+		FROM vms v
+		JOIN users u ON v.user_id = u.id
+		ORDER BY v.created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query vms with users: %w", err)
+	}
+	defer rows.Close()
+
+	var vms []*VMWithUser
+	var kratosIDs []string
+	for rows.Next() {
+		vm := &VMWithUser{}
+		if err := rows.Scan(&vm.ID, &vm.UserID, &vm.UUID, &vm.ProxmoxVMID, &vm.NodeName, &vm.TFWorkdir, &vm.Status, &vm.CreatedAt, &vm.KratosID); err != nil {
+			return nil, fmt.Errorf("failed to scan vm: %w", err)
+		}
+		vms = append(vms, vm)
+		kratosIDs = append(kratosIDs, vm.KratosID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	emails := getEmailsByKratosIDs(kratosIDs)
+	for _, vm := range vms {
+		vm.Email = emails[vm.KratosID]
+	}
+
+	return vms, nil
+}
+
 // getAllISOs はすべてのISOを取得します（管理者用もしくは全ユーザー共有用）
 func getAllISOs() ([]*ISO, error) {
 	rows, err := db.Query(

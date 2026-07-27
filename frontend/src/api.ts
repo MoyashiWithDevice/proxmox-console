@@ -1,4 +1,4 @@
-import type { VM, VMRequest, SettingsResponse, KratosFlow } from './types';
+import type { VM, VMRequest, SettingsResponse, KratosFlow, AdminDashboardData } from './types';
 
 export function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   const options: RequestInit = {
@@ -157,6 +157,10 @@ export function updateSupportStatus(id: number, status: string): Promise<{ statu
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+}
+
+export function fetchAdminDashboard(): Promise<AdminDashboardData> {
+  return api<AdminDashboardData>('/api/admin/dashboard');
 }
 
 

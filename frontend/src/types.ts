@@ -99,3 +99,44 @@ export const statusLabels: Record<string, string> = {
   paused: 'Paused',
   installing: 'Installing',
 };
+
+// Admin Dashboard types
+export interface AdminDashboardSummary {
+  total_vms: number;
+  running: number;
+  stopped: number;
+  error: number;
+  total_users: number;
+}
+
+export interface AdminDashboardNode {
+  name: string;
+  cpu_percent: number;
+  cpu_cores: number;
+  mem_used: number;
+  mem_total: number;
+  disk_used: number;
+  disk_total: number;
+}
+
+export interface AdminDashboardVM {
+  uuid: string;
+  vmid: number;
+  servername: string;
+  user_email: string;
+  status: string;
+  ip: string;
+  cpu_cores: number;
+  cpu_usage_percent: number;
+  mem_used: number;
+  mem_total: number;
+  disk_used: number;
+  disk_total: number;
+  created_at: string;
+}
+
+export interface AdminDashboardData {
+  summary: AdminDashboardSummary;
+  nodes: AdminDashboardNode[];
+  vms: AdminDashboardVM[];
+}

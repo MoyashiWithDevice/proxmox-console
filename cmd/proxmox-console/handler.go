@@ -1370,6 +1370,175 @@ func adminSupportUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// GET /api/admin/dashboard
+func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	dbVMs, err := getAllVMsWithUsers()
+	if err != nil {
+		log.Printf("adminDashboardHandler: getAllVMsWithUsers: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to list vms")
+		return
+	}
+
+	// サマリー集計
+	summary := struct {
+		TotalVMs  int `json:"total_vms"`
+		Running   int `json:"running"`
+		Stopped   int `json:"stopped"`
+		Error     int `json:"error"`
+		TotalUsers int `json:"total_users"`
+	}{TotalVMs: len(dbVMs)}
+
+	userIDs := make(map[int]bool)
+	for _, vm := range dbVMs {
+		userIDs[vm.UserID] = true
+		switch strings.ToLower(vm.Status) {
+		case "running":
+			summary.Running++
+		case "stopped":
+			summary.Stopped++
+		case "error":
+			summary.Error++
+		}
+	}
+	summary.TotalUsers = len(userIDs)
+
+	// ノード名を集計してProxmoxから情報を取得
+	nodeNames := make(map[string]bool)
+	for _, vm := range dbVMs {
+		nodeNames[vm.NodeName] = true
+	}
+
+	type nodeInfo struct {
+		Name    string  `json:"name"`
+		CPU     float64 `json:"cpu_percent"`
+		MaxCPU  int     `json:"cpu_cores"`
+		Mem     uint64  `json:"mem_used"`
+		MaxMem  uint64  `json:"mem_total"`
+		Disk    uint64  `json:"disk_used"`
+		MaxDisk uint64  `json:"disk_total"`
+	}
+
+	var nodes []nodeInfo
+	// nodeName → map[vmid]ProxmoxVMUsage
+	allVMUsage := make(map[string]map[int]ProxmoxVMUsage)
+
+	for nodeName := range nodeNames {
+		stats, err := getProxmoxNodeStats(ctx, nodeName)
+		if err != nil {
+			log.Printf("adminDashboardHandler: getProxmoxNodeStats(%s): %v", nodeName, err)
+			continue
+		}
+		nodes = append(nodes, nodeInfo{
+			Name:    stats.Name,
+			CPU:     stats.CPU * 100,
+			MaxCPU:  stats.MaxCPU,
+			Mem:     stats.Mem,
+			MaxMem:  stats.MaxMem,
+			Disk:    stats.Disk,
+			MaxDisk: stats.MaxDisk,
+		})
+
+		vmUsage, err := getProxmoxAllVMStatus(ctx, nodeName)
+		if err != nil {
+			log.Printf("adminDashboardHandler: getProxmoxAllVMStatus(%s): %v", nodeName, err)
+			continue
+		}
+		allVMUsage[nodeName] = vmUsage
+	}
+
+	if nodes == nil {
+		nodes = []nodeInfo{}
+	}
+
+	// VM一覧を構築
+	type dashVM struct {
+		UUID          string  `json:"uuid"`
+		VMID          int     `json:"vmid"`
+		Servername    string  `json:"servername"`
+		UserEmail     string  `json:"user_email"`
+		Status        string  `json:"status"`
+		IP            string  `json:"ip"`
+		CPUCores      int     `json:"cpu_cores"`
+		CPUUsage      float64 `json:"cpu_usage_percent"`
+		MemUsed       uint64  `json:"mem_used"`
+		MemTotal      uint64  `json:"mem_total"`
+		DiskUsed      uint64  `json:"disk_used"`
+		DiskTotal     uint64  `json:"disk_total"`
+		CreatedAt     string  `json:"created_at"`
+	}
+
+	var dashVMs []dashVM
+	for _, dbVM := range dbVMs {
+		dv := dashVM{
+			UUID:       dbVM.UUID,
+			VMID:       dbVM.ProxmoxVMID,
+			UserEmail:  dbVM.Email,
+			Status:     dbVM.Status,
+			IP:         "-",
+			CreatedAt:  dbVM.CreatedAt.Format(time.RFC3339),
+		}
+
+		// terraform.tfstate からVM設定値を読み込み
+		tfstatePath := filepath.Join(dbVM.TFWorkdir, "terraform.tfstate")
+		if b, err := os.ReadFile(tfstatePath); err == nil {
+			var state TFState
+			if err := json.Unmarshal(b, &state); err == nil {
+				for _, res := range state.Resources {
+					if res.Type != "proxmox_virtual_environment_vm" || len(res.Instances) == 0 {
+						continue
+					}
+					attr := res.Instances[0].Attributes
+					dv.Servername = parseString(attr["name"])
+					if cores, ok := parseFirstMapInt(attr["cpu"], "cores"); ok {
+						dv.CPUCores = cores
+					}
+					if mem, ok := parseFirstMapInt(attr["memory"], "dedicated"); ok {
+						dv.MemTotal = uint64(mem) * 1024 * 1024 // MB → bytes
+					}
+					if hdd, ok := parseFirstMapInt(attr["disk"], "size"); ok {
+						dv.DiskTotal = uint64(hdd) * 1024 * 1024 * 1024 // GB → bytes
+					}
+					break
+				}
+			}
+		}
+
+		// Proxmoxからの実使用率を適用
+		if vmUsageMap, ok := allVMUsage[dbVM.NodeName]; ok {
+			if usage, ok := vmUsageMap[dbVM.ProxmoxVMID]; ok {
+				dv.Status = usage.Status
+				dv.CPUUsage = usage.CPU * 100
+				dv.MemUsed = usage.Mem
+				if usage.MaxMem > 0 {
+					dv.MemTotal = usage.MaxMem
+				}
+				dv.DiskUsed = usage.Disk
+				if usage.MaxDisk > 0 {
+					dv.DiskTotal = usage.MaxDisk
+				}
+			}
+		}
+
+		dashVMs = append(dashVMs, dv)
+	}
+
+	if dashVMs == nil {
+		dashVMs = []dashVM{}
+	}
+
+	resp := map[string]any{
+		"summary": summary,
+		"nodes":   nodes,
+		"vms":     dashVMs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 type flushWriter struct {
 	w http.ResponseWriter
 }

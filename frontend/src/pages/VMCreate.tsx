@@ -204,6 +204,18 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+const numberInputStyle: React.CSSProperties = {
+  background: '#000',
+  border: '1px solid #111',
+  color: '#888',
+  fontSize: 13,
+  padding: '2px 6px',
+  borderRadius: 4,
+  outline: 'none',
+  width: 72,
+  textAlign: 'right',
+};
+
 function SliderRow({ icon, label, value, setValue, min, max, step, unit }: {
   icon: 'hardDrive' | 'cpu' | 'memoryStick';
   label: string;
@@ -234,6 +246,15 @@ function SliderRow({ icon, label, value, setValue, min, max, step, unit }: {
     document.addEventListener('mouseup', onUp);
   }
 
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    if (raw === '') return;
+    const num = Number(raw);
+    if (isNaN(num)) return;
+    const clamped = Math.min(max, Math.max(min, Math.round(num / step) * step));
+    setValue(clamped);
+  }
+
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -241,7 +262,18 @@ function SliderRow({ icon, label, value, setValue, min, max, step, unit }: {
           <Icon name={icon} size={14} color="#444" />
           <span style={{ fontSize: 13, color: '#ccc' }}>{label}</span>
         </div>
-        <span style={{ fontSize: 13, color: '#888' }}>{value} {unit}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={handleInputChange}
+            style={numberInputStyle}
+          />
+          <span style={{ fontSize: 13, color: '#888' }}>{unit}</span>
+        </div>
       </div>
       <div
         onMouseDown={onMouseDown}

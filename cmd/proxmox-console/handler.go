@@ -1382,29 +1382,6 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// サマリー集計
-	summary := struct {
-		TotalVMs  int `json:"total_vms"`
-		Running   int `json:"running"`
-		Stopped   int `json:"stopped"`
-		Error     int `json:"error"`
-		TotalUsers int `json:"total_users"`
-	}{TotalVMs: len(dbVMs)}
-
-	userIDs := make(map[int]bool)
-	for _, vm := range dbVMs {
-		userIDs[vm.UserID] = true
-		switch strings.ToLower(vm.Status) {
-		case "running":
-			summary.Running++
-		case "stopped":
-			summary.Stopped++
-		case "error":
-			summary.Error++
-		}
-	}
-	summary.TotalUsers = len(userIDs)
-
 	// ノード名を集計してProxmoxから情報を取得
 	nodeNames := make(map[string]bool)
 	for _, vm := range dbVMs {
@@ -1453,32 +1430,32 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		nodes = []nodeInfo{}
 	}
 
-	// VM一覧を構築
+	// VM一覧を構築（Proxmoxステータスを適用してから）
 	type dashVM struct {
-		UUID          string  `json:"uuid"`
-		VMID          int     `json:"vmid"`
-		Servername    string  `json:"servername"`
-		UserEmail     string  `json:"user_email"`
-		Status        string  `json:"status"`
-		IP            string  `json:"ip"`
-		CPUCores      int     `json:"cpu_cores"`
-		CPUUsage      float64 `json:"cpu_usage_percent"`
-		MemUsed       uint64  `json:"mem_used"`
-		MemTotal      uint64  `json:"mem_total"`
-		DiskUsed      uint64  `json:"disk_used"`
-		DiskTotal     uint64  `json:"disk_total"`
-		CreatedAt     string  `json:"created_at"`
+		UUID       string  `json:"uuid"`
+		VMID       int     `json:"vmid"`
+		Servername string  `json:"servername"`
+		UserEmail  string  `json:"user_email"`
+		Status     string  `json:"status"`
+		IP         string  `json:"ip"`
+		CPUCores   int     `json:"cpu_cores"`
+		CPUUsage   float64 `json:"cpu_usage_percent"`
+		MemUsed    uint64  `json:"mem_used"`
+		MemTotal   uint64  `json:"mem_total"`
+		DiskUsed   uint64  `json:"disk_used"`
+		DiskTotal  uint64  `json:"disk_total"`
+		CreatedAt  string  `json:"created_at"`
 	}
 
 	var dashVMs []dashVM
 	for _, dbVM := range dbVMs {
 		dv := dashVM{
-			UUID:       dbVM.UUID,
-			VMID:       dbVM.ProxmoxVMID,
-			UserEmail:  dbVM.Email,
-			Status:     dbVM.Status,
-			IP:         "-",
-			CreatedAt:  dbVM.CreatedAt.Format(time.RFC3339),
+			UUID:      dbVM.UUID,
+			VMID:      dbVM.ProxmoxVMID,
+			UserEmail: dbVM.Email,
+			Status:    dbVM.Status,
+			IP:        "-",
+			CreatedAt: dbVM.CreatedAt.Format(time.RFC3339),
 		}
 
 		// terraform.tfstate からVM設定値を読み込み
@@ -1506,7 +1483,7 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Proxmoxからの実使用率を適用
+		// Proxmoxからの実ステータス・使用率を適用
 		if vmUsageMap, ok := allVMUsage[dbVM.NodeName]; ok {
 			if usage, ok := vmUsageMap[dbVM.ProxmoxVMID]; ok {
 				dv.Status = usage.Status
@@ -1527,6 +1504,34 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if dashVMs == nil {
 		dashVMs = []dashVM{}
+	}
+
+	// サマリー集計（Proxmoxステータス適用後のdashVMsから集計）
+	summary := struct {
+		TotalVMs   int `json:"total_vms"`
+		Running    int `json:"running"`
+		Stopped    int `json:"stopped"`
+		Error      int `json:"error"`
+		TotalUsers int `json:"total_users"`
+	}{TotalVMs: len(dashVMs)}
+
+	userIDs := make(map[int]bool)
+	for _, dbVM := range dbVMs {
+		userIDs[dbVM.UserID] = true
+	}
+	summary.TotalUsers = len(userIDs)
+
+	for _, dv := range dashVMs {
+		switch strings.ToLower(dv.Status) {
+		case "running":
+			summary.Running++
+		case "stopped", "completed":
+			summary.Stopped++
+		case "error":
+			summary.Error++
+		default:
+			log.Printf("adminDashboardHandler: unknown VM status %q for VM %d", dv.Status, dv.VMID)
+		}
 	}
 
 	resp := map[string]any{

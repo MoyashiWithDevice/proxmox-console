@@ -119,8 +119,10 @@ export function AdminDashboardPage() {
     const s = search.toLowerCase();
     if (s && !String(v.vmid).includes(s) && !(v.servername || '').toLowerCase().includes(s) && !(v.user_email || '').toLowerCase().includes(s)) return false;
     const st = (v.status || '').toLowerCase();
-    if (statusFilter === 'running' && st !== 'running') return false;
-    if (statusFilter === 'stopped' && st !== 'stopped') return false;
+    const isRunning = st === 'running';
+    const isStopped = st === 'stopped' || st === 'completed';
+    if (statusFilter === 'running' && !isRunning) return false;
+    if (statusFilter === 'stopped' && !isStopped) return false;
     return true;
   });
 

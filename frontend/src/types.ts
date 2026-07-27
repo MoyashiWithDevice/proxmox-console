@@ -82,6 +82,7 @@ export const statusColors: Record<string, { dot: string; color: string }> = {
   running: { dot: '#22c55e', color: '#22c55e' },
   done: { dot: '#22c55e', color: '#22c55e' },
   stopped: { dot: '#f43f5e', color: '#f43f5e' },
+  completed: { dot: '#f43f5e', color: '#f43f5e' },
   error: { dot: '#f43f5e', color: '#f43f5e' },
   paused: { dot: '#f59e0b', color: '#f59e0b' },
   installing: { dot: '#f59e0b', color: '#f59e0b' },
@@ -95,6 +96,7 @@ export const statusColors: Record<string, { dot: string; color: string }> = {
 export const statusLabels: Record<string, string> = {
   running: 'Running',
   stopped: 'Stopped',
+  completed: 'Stopped',
   error: 'Error',
   paused: 'Paused',
   installing: 'Installing',

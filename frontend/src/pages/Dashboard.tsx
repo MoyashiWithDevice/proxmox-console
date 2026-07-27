@@ -212,7 +212,7 @@ export function Dashboard() {
                     {ip}
                   </td>
                   <td style={{ ...td, color: '#888' }}>{cores}</td>
-                  <td style={{ ...td, color: '#888' }}>{mem} GB</td>
+                  <td style={{ ...td, color: '#888' }}>{mem} MB</td>
                   <td style={{ ...td, color: '#888' }}>{hdd} GB</td>
                   <td style={{ ...td, color: '#ccc' }}>
                     <div style={{ display: 'flex', gap: 4 }}>

@@ -163,7 +163,9 @@ func getProxmoxVMInfo(ctx context.Context, nodeName string, vmid int) (ProxmoxVM
 	}
 
 	// IPはベストエフォート（失敗してもStatusは返す）
-	ifaces, err := vm.AgentGetNetworkIFaces(ctx)
+	agentCtx, agentCancel := context.WithTimeout(ctx, 1*time.Second)
+	defer agentCancel()
+	ifaces, err := vm.AgentGetNetworkIFaces(agentCtx)
 	if err == nil {
 		for _, iface := range ifaces {
 			for _, addr := range iface.IPAddresses {
